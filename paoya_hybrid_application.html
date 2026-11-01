@@ -374,12 +374,17 @@
             ร้านขายยาใกล้ฉัน
           </div>
           
-          {/* Mock Map Area */}
-          <div class="h-52 bg-[#E5F0EC] flex flex-col items-center justify-center relative border-b border-green-100">
-            <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#2D7A4C_1px,transparent_1px)] [background-size:16px_16px]"></div>
-            <i data-lucide="map-pin" class="w-10 h-10 text-[#2D7A4C] animate-bounce"></i>
-            <span class="text-[#2D7A4C] font-bold text-sm mt-1 z-10">[ ส่วนแสดงแผนที่ Map ]</span>
-          </div>
+          <div class="h-52 w-full border-b border-green-100 overflow-hidden">
+  <iframe
+    title="pharmacy-map"
+    width="100%"
+    height="100%"
+    style="border:0;"
+    loading="lazy"
+    allowfullscreen
+    src="https://maps.google.com/maps?q=ร้านขายยาใกล้ฉัน&t=&z=13&ie=UTF8&iwloc=&output=embed"
+  ></iframe>
+</div>
 
           {/* Pharmacy List */}
           <div class="flex-1 p-4 divide-y divide-gray-100 overflow-y-auto">
