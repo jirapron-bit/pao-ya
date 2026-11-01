@@ -59,19 +59,41 @@
 
     // --- Main App Component ---
     function App() {
-      const [currentScreen, setCurrentScreen] = useState('welcome'); // welcome, login, home, mymeds, scan, pharmacy, settings
-      const [email, setEmail] = useState('');
-      const [password, setPassword] = useState('');
-      const [showPassword, setShowPassword] = useState(false);
-      const [searchQuery, setSearchQuery] = useState('');
+  const [currentScreen, setCurrentScreen] = useState('welcome');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-      // Refresh icons when component renders or screen changes
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [currentScreen, showPassword]);
+  // 1. เพิ่ม State เก็บข้อมูลยาจาก datadrug.xlsx
+  const [medicines, setMedicines] = useState([]);
 
+  // 2. อ่านไฟล์ Excel อัตโนมัติเมื่อเปิดแอป
+  useEffect(() => {
+    fetch('datadrug.xlsx')
+      .then(res => res.arrayBuffer())
+      .then(buffer => {
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const parsedData = XLSX.utils.sheet_to_json(sheet);
+
+        const formatted = parsedData.map(item => ({
+          title: item['ชื่อสามัญทางยา (Generic Name)'] || 'ไม่ระบุชื่อยา',
+          sub: `รูปแบบ: ${item['รูปแบบยา (Dosage Form)'] || '-'} | หมายเหตุ: ${item['คำเตือน / หมายเหตุเพิ่มเติม'] || 'ไม่มี'}`
+        }));
+
+        setMedicines(formatted);
+      })
+      .catch(err => console.error("Error loading Excel file:", err));
+  }, []);
+
+  // Refresh icons when component renders or screen changes
+  useEffect(() => {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  }, [currentScreen, showPassword]);
       // Render Screen Content
       return (
         <div class="flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
@@ -171,7 +193,7 @@
               
               {/* Dynamic View Content */}
               <div class="flex-1 overflow-y-auto no-scrollbar relative">
-                {currentScreen === 'home' && <HomeScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} />}
+                {currentScreen === 'home' && <HomeScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} medicines={medicines} />}
                 {currentScreen === 'mymeds' && <MyMedsScreen />}
                 {currentScreen === 'scan' && <ScanScreen />}
                 {currentScreen === 'pharmacy' && <PharmacyScreen />}
