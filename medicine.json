@@ -1,0 +1,24 @@
+import pandas as pd
+import json
+
+# อ่านข้อมูลจากชีต Restructured_NLEM_Data
+df = pd.read_excel('datadrug.xlsx', sheet_name='Restructured_NLEM_Data')
+
+# คัดเลือกและจัดรูปแบบคอลัมน์ที่ต้องการใช้งาน
+medicines = []
+for idx, row in df.iterrows():
+    medicines.append({
+        "id": int(row['ลำดับ (No.)']),
+        "title": str(row['ชื่อสามัญทางยา (Generic Name)']),
+        "sub": f"{row['รูปแบบยา (Dosage Form)']} | ความแรง: {row['ความแรง / เกลือ (Strength/Salt)']}",
+        "category": str(row['ชื่อหมวดหมู่หลัก (Main Group)']),
+        "subgroup": str(row['หมวดหมูีย่อย (Subgroup Path)']),
+        "condition": str(row['เงื่อนไขการใช้ยา']),
+        "warning": str(row['คำเตือน / หมายเหตุเพิ่มเติม'])
+    })
+
+# บันทึกเป็นไฟล์ medicines.json
+with open('medicines.json', 'w', encoding='utf-8') as f:
+    json.dump(medicines, f, ensure_ascii=False, indent=2)
+
+print("แปลงข้อมูลสำเร็จเรียบร้อย!")
