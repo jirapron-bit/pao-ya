@@ -66,7 +66,6 @@
     // คอมโพเนนต์ไอคอนดวงตาแบบ Inline SVG เพื่อให้เปลี่ยนรูปทันทีตาม State
     const EyeIcon = ({ isOpen, className = "w-5 h-5" }) => {
       if (isOpen) {
-        // ตาเปิด (เมื่อเห็นตัวอักษร)
         return (
           <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
@@ -74,7 +73,6 @@
           </svg>
         );
       }
-      // ตาปิด / ขีดฆ่า (เมื่อซ่อนรหัสผ่าน)
       return (
         <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
@@ -109,6 +107,7 @@
       const [medicines, setMedicines] = useState([]);
       const [isLoading, setIsLoading] = useState(true);
       const [selectedMedicine, setSelectedMedicine] = useState(null);
+      const [recentlyViewedMeds, setRecentlyViewedMeds] = useState([]);
 
       // โหลดไฟล์ datadrug.xlsx อัตโนมัติเมื่อเปิดแอป
       useEffect(() => {
@@ -133,7 +132,20 @@
         if (window.lucide) {
           window.lucide.createIcons();
         }
-      }, [currentScreen, medicines, selectedMedicine]);
+      }, [currentScreen, medicines, selectedMedicine, recentlyViewedMeds]);
+
+      // เพิ่มยาเข้าสู่รายการยาที่เคยเปิดดู
+      const addRecentlyViewed = (medItem) => {
+        if (!medItem || !medItem.title) return;
+        setRecentlyViewedMeds(prev => {
+          const filtered = prev.filter(item => item.title !== medItem.title);
+          return [medItem, ...filtered].slice(0, 8); // เก็บยาล่าสุดสูงสุด 8 รายการ
+        });
+      };
+
+      const clearRecentlyViewed = () => {
+        setRecentlyViewedMeds([]);
+      };
 
       return (
         <div className="flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
@@ -265,6 +277,9 @@
                     isLoading={isLoading}
                     setSelectedMedicine={setSelectedMedicine}
                     setCurrentScreen={setCurrentScreen}
+                    recentlyViewedMeds={recentlyViewedMeds}
+                    addRecentlyViewed={addRecentlyViewed}
+                    clearRecentlyViewed={clearRecentlyViewed}
                   />
                 )}
                 {currentScreen === 'med_detail' && (
@@ -274,7 +289,15 @@
                   />
                 )}
                 {currentScreen === 'mymeds' && <MyMedsScreen />}
-                {currentScreen === 'scan' && <ScanScreen medicines={medicines} />}
+                {currentScreen === 'scan' && (
+                  <ScanScreen 
+                    medicines={medicines} 
+                    setSearchQuery={setSearchQuery}
+                    setSelectedMedicine={setSelectedMedicine}
+                    setCurrentScreen={setCurrentScreen}
+                    addRecentlyViewed={addRecentlyViewed}
+                  />
+                )}
                 {currentScreen === 'pharmacy' && <PharmacyScreen />}
                 {currentScreen === 'settings' && <SettingsScreen setCurrentScreen={setCurrentScreen} />}
               </div>
@@ -691,7 +714,7 @@
     }
 
     // 1. Home Screen
-    function HomeScreen({ searchQuery, setSearchQuery, medicines, setMedicines, isLoading, setSelectedMedicine, setCurrentScreen }) {
+    function HomeScreen({ searchQuery, setSearchQuery, medicines, setMedicines, isLoading, setSelectedMedicine, setCurrentScreen, recentlyViewedMeds, addRecentlyViewed, clearRecentlyViewed }) {
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -708,12 +731,18 @@
         reader.readAsArrayBuffer(file);
       };
 
+      const handleSearchChange = (e) => {
+        setSearchQuery(e.target.value);
+      };
+
       const filteredMeds = medicines.filter(m => 
         m.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
         m.sub.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
+      // เมื่อกดเลือกยาตัวไหน ให้เปิดหน้ารายละเอียดและบันทึกยานั้นเข้าประวัติล่าสุดทันที
       const handleSelectMed = (item) => {
+        addRecentlyViewed(item);
         setSelectedMedicine(item);
         setCurrentScreen('med_detail');
       };
@@ -735,15 +764,23 @@
           </div>
           
           <div className="p-4">
-            <div className="flex items-center border border-gray-300 rounded-full px-4 py-2 my-2 bg-gray-50 focus-within:border-[#2D7A4C] focus-within:bg-white transition-all">
+            <div className="flex items-center border border-gray-300 rounded-full px-4 py-2 my-2 bg-gray-50 focus-within:border-[#2D7A4C] focus-within:bg-white transition-all relative">
               <i data-lucide="search" className="w-4 h-4 text-gray-400 mr-2"></i>
               <input 
                 type="text" 
                 placeholder="ค้นหาชื่อยา..." 
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-transparent text-sm focus:outline-none"
+                onChange={handleSearchChange}
+                className="w-full bg-transparent text-sm focus:outline-none pr-6"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 text-gray-400 hover:text-gray-600"
+                >
+                  <i data-lucide="x-circle" className="w-4 h-4"></i>
+                </button>
+              )}
             </div>
 
             <div className="flex justify-between items-center my-3">
@@ -757,10 +794,42 @@
               {isLoading ? (
                 <div className="text-center text-gray-400 py-10 text-sm">กำลังโหลดข้อมูลยา...</div>
               ) : !searchQuery.trim() ? (
-                <div className="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 rounded-2xl my-4 px-4">
-                  <i data-lucide="search" className="w-8 h-8 mx-auto mb-2 text-gray-300"></i>
-                  <p className="font-medium text-gray-500">กรุณากรอกชื่อยาเพื่อค้นหา</p>
-                  <p className="text-xs text-gray-400 mt-1">หรือกดเมนู <span className="font-bold text-[#004D25]">"สแกน"</span> ด้านล่างเพื่อค้นหาด้วยภาพ</p>
+                <div className="space-y-4">
+                  {/* กล่องประวัติยาที่เคยเปิดดู */}
+                  {recentlyViewedMeds && recentlyViewedMeds.length > 0 && (
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <div className="flex justify-between items-center mb-2.5">
+                        <span className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+                          <i data-lucide="history" className="w-3.5 h-3.5 text-gray-400"></i>
+                          ประวัติการค้นหา (ยาที่เคยเปิดดู)
+                        </span>
+                        <button 
+                          onClick={clearRecentlyViewed}
+                          className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                        >
+                          <i data-lucide="trash-2" className="w-3 h-3"></i>
+                          ล้างประวัติ
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {recentlyViewedMeds.map((medItem, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleSelectMed(medItem)}
+                            className="text-xs bg-white text-gray-700 px-3 py-1.5 rounded-full border border-gray-200 hover:border-[#2D7A4C] hover:text-[#2D7A4C] transition-all shadow-sm font-medium"
+                          >
+                            {medItem.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-center text-gray-400 py-10 border-2 border-dashed border-gray-200 rounded-2xl px-4">
+                    <i data-lucide="search" className="w-8 h-8 mx-auto mb-2 text-gray-300"></i>
+                    <p className="font-medium text-gray-500">กรุณากรอกชื่อยาเพื่อค้นหา</p>
+                    <p className="text-xs text-gray-400 mt-1">หรือกดเมนู <span className="font-bold text-[#004D25]">"สแกน"</span> ด้านล่างเพื่อค้นหาด้วยภาพ</p>
+                  </div>
                 </div>
               ) : filteredMeds.length > 0 ? (
                 filteredMeds.map((item, idx) => (
@@ -792,7 +861,7 @@
       );
     }
 
-    // --- Medicine Detail Screen ---
+    // --- Medicine Detail Screen (หน้ารายละเอียดยา) ---
     function MedicineDetailScreen({ medicine, setCurrentScreen }) {
       const raw = medicine?.raw || {};
 
@@ -802,9 +871,9 @@
 
       const indication = raw['สรรพคุณ'] || raw['ข้อบ่งใช้'] || 'บรรเทาอาการปวดเล็กน้อยถึงปานกลาง และลดไข้';
       const dosage = raw['ขนาดและวิธีใช้'] || raw['ขนาดยา'] || 'รับประทานทุก 4-6 ชม. ไม่เกิน 4 กรัม/วัน';
-      const warning = raw['คำเตือน / หมายเหตุเพิ่มเติม'] || raw['ข้อควรระวัง'] || 'ระวังในผู้ป่วยโรคตับ ห้ามใช้ร่วมกับแอลกอฮอล์ปริมาณมาก';
+      const warning = raw['คำเตือน / หมายเหตุเพิ่มเติม'] || raw['ข้อควรระวัง'] || 'ระวังในผู้ป่วยโรคตับ\nห้ามใช้ร่วมกับแอลกอฮอล์ปริมาณมาก';
       const sideEffects = raw['ผลข้างเคียง'] || 'คลื่นไส้ ผื่นแพ้ หากเกินขนาดอาจเป็นพิษต่อตับ';
-      const pregnancy = raw['หญิงตั้งครรภ์'] || 'ปลอดภัยในขนาดที่แนะนำสำหรับหญิงตั้งครรภ์/ให้นมบุตร';
+      const pregnancy = raw['หญิงตั้งครรภ์'] || 'ปลอดภัยในขนาดที่แนะนำสำหรับหญิงตั้งครรภ์/\nให้นมบุตร';
       const elderly = raw['ผู้สูงอายุ'] || 'ปรับลดขนาดในผู้สูงอายุที่มีโรคตับ';
 
       return (
@@ -860,7 +929,7 @@
 
                 <div>
                   <h4 className="font-bold text-gray-900 text-sm mb-1">หญิงตั้งครรภ์ / ให้นมบุตร</h4>
-                  <p className="text-gray-600">{pregnancy}</p>
+                  <p className="text-gray-600 whitespace-pre-line">{pregnancy}</p>
                 </div>
 
                 <div>
@@ -909,7 +978,7 @@
     }
 
     // 3. Camera / Scan Screen
-    function ScanScreen({ medicines }) {
+    function ScanScreen({ medicines, setSearchQuery, setSelectedMedicine, setCurrentScreen, addRecentlyViewed }) {
       const [isProcessing, setIsProcessing] = useState(false);
       const [ragResult, setRagResult] = useState(null);
 
@@ -939,11 +1008,24 @@
             drugName: matchedMed.title,
             details: matchedMed.sub,
             aiAdvice: `จากการวิเคราะห์ภาพตัวอย่างและสืบค้นฐานข้อมูล NLEM (RAG): ยานี้คือ ${matchedMed.title} มีสรรพคุณตามหมวดหมู่ ควรใช้ภายใต้คำแนะนำของแพทย์หรือเภสัชกร`,
-            confidence: (89 + Math.floor(Math.random() * 10)) + '%'
+            confidence: (89 + Math.floor(Math.random() * 10)) + '%',
+            matchedMedItem: matchedMed
           });
 
           setIsProcessing(false);
         }, 2200);
+      };
+
+      const handleConfirmScanResult = () => {
+        if (ragResult?.matchedMedItem) {
+          addRecentlyViewed(ragResult.matchedMedItem);
+          setSelectedMedicine(ragResult.matchedMedItem);
+          setCurrentScreen('med_detail');
+        } else if (ragResult?.drugName) {
+          setSearchQuery(ragResult.drugName);
+          setCurrentScreen('home');
+        }
+        setRagResult(null);
       };
 
       const handleImageSelect = (e) => {
@@ -1029,10 +1111,10 @@
                 </div>
 
                 <button 
-                  onClick={() => setRagResult(null)}
+                  onClick={handleConfirmScanResult}
                   className="w-full bg-[#388E3C] text-white font-bold py-3 rounded-xl text-sm shadow hover:bg-[#2e7d32] active:scale-95 transition-all"
                 >
-                  ตกลง / ปิดหน้าต่าง
+                  ดูรายละเอียดยานี้
                 </button>
               </div>
             </div>
