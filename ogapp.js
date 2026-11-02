@@ -1,1009 +1,534 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>เป๋ายา (PAOYA) - Hybrid App</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React & React DOM -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="script"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="script"></script>
-  
-  <!-- Babel Compiler -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
-  <!-- SheetJS Library สำหรับอ่านไฟล์ Excel -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
-    
-    * {
-      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    
-    @keyframes scanAnimation {
-      0% { top: 0%; }
-      50% { top: 98%; }
-      100% { top: 0%; }
-    }
-    .scan-line {
-      animation: scanAnimation 3s infinite ease-in-out;
-    }
-  </style>
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-0 sm:p-4">
-
-  <!-- Main Container / Device Frame -->
-  <div id="root" class="w-full max-w-md h-screen sm:h-[844px] bg-white sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative border-0 sm:border-[8px] sm:border-gray-800"></div>
-
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-
-    // ฟังก์ชันแปลงข้อมูล Sheet Excel เป็นรูปแบบใช้งานในแอป
-    function processWorkbook(workbook) {
-      const sheetName = workbook.SheetNames.find(name => name.includes('Data') || name.includes('NLEM')) || workbook.SheetNames[workbook.SheetNames.length - 1];
-      const sheet = workbook.Sheets[sheetName];
-      const parsedData = XLSX.utils.sheet_to_json(sheet);
-
-      return parsedData.map(item => ({
-        title: item['ชื่อสามัญทางยา (Generic Name)'] || item['ชื่อยา'] || 'ไม่ระบุชื่อยา',
-        sub: `รูปแบบ: ${item['รูปแบบยา (Dosage Form)'] || '-'} | ความแรง: ${item['ความแรง / เกลือ (Strength/Salt)'] || '-'} | หมายเหตุ: ${item['คำเตือน / หมายเหตุเพิ่มเติม'] || 'ไม่มี'}`,
-        raw: item
-      }));
-    }
-
-    // --- Main App Component ---
-    function App() {
-      const [currentScreen, setCurrentScreen] = useState('welcome');
-      const [email, setEmail] = useState('');
-      const [password, setPassword] = useState('');
-      const [showPassword, setShowPassword] = useState(false);
-      const [searchQuery, setSearchQuery] = useState('');
-
-      const [medicines, setMedicines] = useState([]);
-      const [isLoading, setIsLoading] = useState(true);
-
-      // โหลดไฟล์ datadrug.xlsx อัตโนมัติเมื่อเปิดแอป
-      useEffect(() => {
-        fetch('datadrug.xlsx')
-          .then(res => {
-            if (!res.ok) throw new Error("File fetch failed");
-            return res.arrayBuffer();
-          })
-          .then(buffer => {
-            const workbook = XLSX.read(buffer, { type: 'array' });
-            const formatted = processWorkbook(workbook);
-            setMedicines(formatted);
-            setIsLoading(false);
-          })
-          .catch(err => {
-            console.log("Auto-load failed or opened via file:// protocol:", err);
-            setIsLoading(false);
-          });
-      }, []);
-
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [currentScreen, showPassword, medicines]);
-
-      return (
-        <div class="flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
-          
-          {/* 1. Welcome Screen */}
-          {currentScreen === 'welcome' && (
-            <div class="flex-1 flex flex-col justify-between items-center p-8 bg-white">
-              <div class="flex-1 flex flex-col items-center justify-center">
-                <div class="mb-6 flex justify-center">
-                  <img 
-                    src="logo_paoya.png" 
-                    alt="PAOYA Logo" 
-                    class="w-36 h-36 object-contain rounded-full shadow-lg"
-                  />
-                </div>
-                <h1 class="text-3xl font-bold text-[#2D7A4C] tracking-wide">เป๋ายา</h1>
-                <p class="text-gray-500 text-sm mt-2">ผู้ช่วยและดูแลเรื่องยาของคุณ</p>
-              </div>
-
-              <button 
-                onClick={() => setCurrentScreen('login')}
-                class="w-full bg-[#388E3C] hover:bg-[#2e7d32] active:scale-[0.98] transition-all text-white font-bold py-3.5 rounded-full text-lg shadow-md mb-4"
-              >
-                เข้าใช้งาน
-              </button>
-            </div>
-          )}
-
-          {/* 2. Login Screen */}
-          {currentScreen === 'login' && (
-            <div class="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
-              <button 
-                onClick={() => setCurrentScreen('welcome')}
-                class="self-start p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
-              >
-                <i data-lucide="chevron-left" class="w-7 h-7"></i>
-              </button>
-
-              <div class="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
-                <div class="flex justify-center mb-2">
-                  <i data-lucide="pill" class="w-12 h-12 text-gray-800"></i>
-                </div>
-                <h2 class="text-2xl font-bold text-center text-gray-800 mb-8">เข้าสู่ระบบ</h2>
-
-                <div class="space-y-4">
-                  <div>
-                    <label class="block text-sm text-gray-600 mb-1.5 font-medium">อีเมล หรือ ชื่อผู้ใช้</label>
-                    <input 
-                      type="text" 
-                      placeholder="ใส่อีเมล หรือ ชื่อผู้ใช้" 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      class="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="block text-sm text-gray-600 mb-1.5 font-medium">รหัสผ่าน</label>
-                    <div class="relative flex items-center">
-                      <input 
-                        type={showPassword ? "text" : "password"} 
-                        placeholder="ใส่รหัสผ่าน" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        class="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => setShowPassword(!showPassword)}
-                        class="absolute right-3 text-gray-500 hover:text-gray-700"
-                      >
-                        <i data-lucide={showPassword ? "eye" : "eye-off"} class="w-5 h-5"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="flex justify-between items-center text-xs pt-1">
-                    <button 
-                      onClick={() => setCurrentScreen('forgot_password')}
-                      class="text-[#2D7A4C] hover:underline font-medium"
-                    >
-                      ลืมรหัสผ่าน
-                    </button>
-                    <button 
-                      onClick={() => setCurrentScreen('register')}
-                      class="text-[#2D7A4C] hover:underline font-medium"
-                    >
-                      สร้างบัญชี
-                    </button>
-                  </div>
-
-                  <button 
-                    onClick={() => setCurrentScreen('home')}
-                    class="w-full mt-6 bg-[#388E3C] text-white font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
-                  >
-                    ยืนยัน
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 3. Register Screen */}
-          {currentScreen === 'register' && (
-            <RegisterScreen setCurrentScreen={setCurrentScreen} />
-          )}
-
-          {/* 4. Forgot Password Screen */}
-          {currentScreen === 'forgot_password' && (
-            <ForgotPasswordScreen setCurrentScreen={setCurrentScreen} />
-          )}
-
-          {/* 5. Reset Password Screen */}
-          {currentScreen === 'reset_password' && (
-            <ResetPasswordScreen setCurrentScreen={setCurrentScreen} />
-          )}
-
-          {/* Main App Container */}
-          {['home', 'mymeds', 'scan', 'pharmacy', 'settings'].includes(currentScreen) && (
-            <div class="flex-1 flex flex-col h-full justify-between relative bg-white">
-              
-              <div class="flex-1 overflow-y-auto no-scrollbar relative">
-                {currentScreen === 'home' && (
-                  <HomeScreen 
-                    searchQuery={searchQuery} 
-                    setSearchQuery={setSearchQuery} 
-                    medicines={medicines}
-                    setMedicines={setMedicines} 
-                    isLoading={isLoading}
-                  />
-                )}
-                {currentScreen === 'mymeds' && <MyMedsScreen />}
-                {currentScreen === 'scan' && <ScanScreen medicines={medicines} />}
-                {currentScreen === 'pharmacy' && <PharmacyScreen />}
-                {currentScreen === 'settings' && <SettingsScreen setCurrentScreen={setCurrentScreen} />}
-              </div>
-
-              {/* Floating Chat Button */}
-              {currentScreen !== 'scan' && (
-                <button 
-                  onClick={() => alert('กำลังเปิดระบบสนทนากับเภสัชกร...')}
-                  class="absolute bottom-20 right-4 bg-[#E8F5E9] p-3 rounded-full shadow-lg text-[#2D7A4C] hover:bg-green-100 transition-all border border-green-200 active:scale-95"
-                >
-                  <i data-lucide="message-square" class="w-6 h-6"></i>
-                </button>
-              )}
-
-              {/* Bottom Navigation Bar */}
-              <div class="h-16 bg-[#E8F8F0] border-t border-[#D0EBE0] flex items-center justify-around px-2 relative z-10">
-                <button 
-                  onClick={() => setCurrentScreen('home')}
-                  class={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'home' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
-                >
-                  <i data-lucide="home" class="w-5 h-5"></i>
-                  <span class={`text-[10px] mt-1 ${currentScreen === 'home' ? 'font-bold' : ''}`}>หน้าหลัก</span>
-                </button>
-
-                <button 
-                  onClick={() => setCurrentScreen('mymeds')}
-                  class={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'mymeds' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
-                >
-                  <i data-lucide="shopping-bag" class="w-5 h-5"></i>
-                  <span class={`text-[10px] mt-1 ${currentScreen === 'mymeds' ? 'font-bold' : ''}`}>ยาของฉัน</span>
-                </button>
-
-                <button 
-                  onClick={() => setCurrentScreen('scan')}
-                  class="flex flex-col items-center -top-4 relative group"
-                >
-                  <div class="w-13 h-13 rounded-2xl bg-[#004D25] flex items-center justify-center shadow-lg text-white group-active:scale-95 transition-all p-3">
-                    <i data-lucide="scan" class="w-6 h-6"></i>
-                  </div>
-                  <span class="text-[10px] text-[#1B5E20] font-bold mt-0.5">สแกน</span>
-                </button>
-
-                <button 
-                  onClick={() => setCurrentScreen('pharmacy')}
-                  class={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'pharmacy' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
-                >
-                  <i data-lucide="map-pin" class="w-5 h-5"></i>
-                  <span class={`text-[10px] mt-1 ${currentScreen === 'pharmacy' ? 'font-bold' : ''}`}>ร้านยา</span>
-                </button>
-
-                <button 
-                  onClick={() => setCurrentScreen('settings')}
-                  class={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'settings' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
-                >
-                  <i data-lucide="settings" class="w-5 h-5"></i>
-                  <span class={`text-[10px] mt-1 ${currentScreen === 'settings' ? 'font-bold' : ''}`}>ตั้งค่า</span>
-                </button>
-              </div>
-
-            </div>
-          )}
-
-        </div>
-      );
-    }
-
-    // --- Sub-Screens ---
-
-    function ForgotPasswordScreen({ setCurrentScreen }) {
-      const [resetEmail, setResetEmail] = useState('');
-      const [isSent, setIsSent] = useState(false);
-
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [isSent]);
-
-      const handleSendEmail = (e) => {
-        e.preventDefault();
-        if (!resetEmail) return;
-        setIsSent(true);
-      };
-
-      return (
-        <div class="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
-          <button 
-            onClick={() => setCurrentScreen('login')}
-            class="self-start p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
-          >
-            <i data-lucide="chevron-left" class="w-7 h-7"></i>
-          </button>
-
-          <div class="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
-            <div class="flex justify-center mb-2">
-              <i data-lucide="key-round" class="w-12 h-12 text-gray-800"></i>
-            </div>
-            <h2 class="text-2xl font-bold text-center text-gray-800 mb-2">ลืมรหัสผ่าน</h2>
-            <p class="text-xs text-center text-gray-500 mb-8">
-              {!isSent 
-                ? 'กรุณากรอกอีเมลของคุณเพื่อรับลิงก์สำหรับรีเซ็ทรหัสผ่าน' 
-                : `ระบบได้ส่งลิงก์ยืนยันตัวตนไปยัง ${resetEmail} เรียบร้อยแล้ว`}
-            </p>
-
-            {!isSent ? (
-              <form onSubmit={handleSendEmail} class="space-y-4">
-                <div>
-                  <label class="block text-sm text-gray-600 mb-1.5 font-medium">อีเมล</label>
-                  <input 
-                    type="email" 
-                    placeholder="ใส่อีเมลของคุณ" 
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    required
-                    class="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  class="w-full mt-6 bg-[#388E3C] text-white font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
-                >
-                  ส่งลิงก์ยืนยันตัวตน
-                </button>
-              </form>
-            ) : (
-              <div class="space-y-4 text-center">
-                <div class="p-4 bg-green-50 rounded-2xl border border-green-200 text-xs text-[#2D7A4C] leading-relaxed">
-                  กรุณาตรวจสอบกล่องจดหมายในอีเมลของคุณ จากนั้นกดลิงก์ยืนยันตัวตนเพื่อตั้งรหัสผ่านใหม่
-                </div>
-
-                <button 
-                  onClick={() => setCurrentScreen('reset_password')}
-                  class="w-full bg-[#388E3C] text-white font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
-                >
-                  ยืนยันในอีเมลแล้ว (กลับเข้าแอป)
-                </button>
-
-                <button 
-                  onClick={() => setIsSent(false)}
-                  class="text-xs text-gray-500 hover:underline block mx-auto pt-2"
-                >
-                  ส่งอีเมลใหม่อีกครั้ง
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    function ResetPasswordScreen({ setCurrentScreen }) {
-      const [newPassword, setNewPassword] = useState('');
-      const [confirmNewPassword, setConfirmNewPassword] = useState('');
-      const [showNewPassword, setShowNewPassword] = useState(false);
-      const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
-
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [showNewPassword, showConfirmNewPassword]);
-
-      const handleResetPassword = (e) => {
-        e.preventDefault();
-        if (newPassword !== confirmNewPassword) {
-          alert('รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน');
-          return;
-        }
-        alert('รีเซ็ทรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่');
-        setCurrentScreen('login');
-      };
-
-      return (
-        <div class="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
-          <button 
-            onClick={() => setCurrentScreen('forgot_password')}
-            class="self-start p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
-          >
-            <i data-lucide="chevron-left" class="w-7 h-7"></i>
-          </button>
-
-          <div class="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
-            <div class="flex justify-center mb-2">
-              <i data-lucide="lock" class="w-12 h-12 text-gray-800"></i>
-            </div>
-            <h2 class="text-2xl font-bold text-center text-gray-800 mb-2">รีเซ็ทรหัสผ่าน</h2>
-            <p class="text-xs text-center text-gray-500 mb-8">กรุณากรอกรหัสผ่านใหม่ของคุณ</p>
-
-            <form onSubmit={handleResetPassword} class="space-y-4">
-              <div>
-                <label class="block text-sm text-gray-600 mb-1.5 font-medium">รหัสผ่านใหม่</label>
-                <div class="relative flex items-center">
-                  <input 
-                    type={showNewPassword ? "text" : "password"} 
-                    placeholder="ใส่รหัสผ่านใหม่" 
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    class="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    class="absolute right-3 text-gray-500 hover:text-gray-700"
-                  >
-                    <i data-lucide={showNewPassword ? "eye" : "eye-off"} class="w-5 h-5"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm text-gray-600 mb-1.5 font-medium">ยืนยันรหัสผ่าน</label>
-                <div class="relative flex items-center">
-                  <input 
-                    type={showConfirmNewPassword ? "text" : "password"} 
-                    placeholder="ยืนยันรหัสผ่านใหม่อีกครั้ง" 
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    required
-                    class="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
-                    class="absolute right-3 text-gray-500 hover:text-gray-700"
-                  >
-                    <i data-lucide={showConfirmNewPassword ? "eye" : "eye-off"} class="w-5 h-5"></i>
-                  </button>
-                </div>
-              </div>
-
-              <button 
-                type="submit"
-                class="w-full mt-6 bg-[#388E3C] text-white font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
-              >
-                ยืนยัน
-              </button>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    function RegisterScreen({ setCurrentScreen }) {
-      const [firstName, setFirstName] = useState('');
-      const [lastName, setLastName] = useState('');
-      const [age, setAge] = useState('');
-      const [medicalCondition, setMedicalCondition] = useState('');
-      const [email, setEmail] = useState('');
-      const [username, setUsername] = useState('');
-      const [password, setPassword] = useState('');
-      const [confirmPassword, setConfirmPassword] = useState('');
-      const [showPassword, setShowPassword] = useState(false);
-      const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [showPassword, showConfirmPassword]);
-
-      const handleRegister = (e) => {
-        e.preventDefault();
-        if (password !== confirmPassword) {
-          alert('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน');
-          return;
-        }
-        alert('สร้างบัญชีเรียบร้อยแล้ว!');
-        setCurrentScreen('login');
-      };
-
-      return (
-        <div class="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
-          <button 
-            onClick={() => setCurrentScreen('login')}
-            class="self-start p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
-          >
-            <i data-lucide="chevron-left" class="w-7 h-7"></i>
-          </button>
-
-          <div class="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full py-2">
-            <div class="flex justify-center mb-2">
-              <i data-lucide="pill" class="w-12 h-12 text-gray-800"></i>
-            </div>
-            <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">สร้างบัญชี</h2>
-
-            <form onSubmit={handleRegister} class="space-y-3">
-              <div class="flex space-x-2">
-                <div class="w-1/2">
-                  <label class="block text-xs text-gray-600 mb-1 font-medium">ชื่อ</label>
-                  <input 
-                    type="text" 
-                    placeholder="ชื่อ" 
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    class="w-full px-3.5 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                  />
-                </div>
-                <div class="w-1/2">
-                  <label class="block text-xs text-gray-600 mb-1 font-medium">นามสกุล</label>
-                  <input 
-                    type="text" 
-                    placeholder="นามสกุล" 
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    class="w-full px-3.5 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">อายุ</label>
-                <input 
-                  type="number" 
-                  placeholder="อายุ (ปี)" 
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  min="1"
-                  required
-                  class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">โรคประจำตัว (ถ้ามี)</label>
-                <input 
-                  type="text" 
-                  placeholder="ระบุโรคประจำตัว หรือใส่ - " 
-                  value={medicalCondition}
-                  onChange={(e) => setMedicalCondition(e.target.value)}
-                  class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">อีเมล</label>
-                <input 
-                  type="email" 
-                  placeholder="example@email.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">ชื่อผู้ใช้</label>
-                <input 
-                  type="text" 
-                  placeholder="ตั้งชื่อผู้ใช้" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">สร้างรหัสผ่าน</label>
-                <div class="relative flex items-center">
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder="สร้างรหัสผ่าน" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowPassword(!showPassword)}
-                    class="absolute right-3 text-gray-500 hover:text-gray-700"
-                  >
-                    <i data-lucide={showPassword ? "eye" : "eye-off"} class="w-4 h-4"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-xs text-gray-600 mb-1 font-medium">ยืนยันรหัสผ่าน</label>
-                <div class="relative flex items-center">
-                  <input 
-                    type={showConfirmPassword ? "text" : "password"} 
-                    placeholder="ยืนยันรหัสผ่านอีกครั้ง" 
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    class="w-full px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    class="absolute right-3 text-gray-500 hover:text-gray-700"
-                  >
-                    <i data-lucide={showConfirmPassword ? "eye" : "eye-off"} class="w-4 h-4"></i>
-                  </button>
-                </div>
-              </div>
-
-              <button 
-                type="submit"
-                class="w-full mt-5 bg-[#388E3C] text-[#FFFFFF] font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
-              >
-                ยืนยัน
-              </button>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    // 1. Home Screen
-    function HomeScreen({ searchQuery, setSearchQuery, medicines, setMedicines, isLoading }) {
-      const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          const buffer = evt.target.result;
-          const workbook = XLSX.read(buffer, { type: 'array' });
-          const formatted = processWorkbook(workbook);
-
-          setMedicines(formatted);
-          alert(`นำเข้าข้อมูลยาสำเร็จ ${formatted.length} รายการ!`);
-        };
-        reader.readAsArrayBuffer(file);
-      };
-
-      const filteredMeds = medicines.filter(m => 
-        m.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        m.sub.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-      return (
-        <div class="flex-1 flex flex-col pb-6">
-          <div class="bg-[#004D25] text-white px-5 py-4 font-bold text-lg shadow-sm flex justify-between items-center">
-            <span>สวัสดี คุณยาเมเต</span>
-            
-            <label class="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-full cursor-pointer transition-all border border-white/30 font-normal">
-              📁 นำเข้า .xlsx
-              <input 
-                type="file" 
-                accept=".xlsx, .xls, .csv" 
-                onChange={handleFileUpload} 
-                class="hidden" 
-              />
-            </label>
-          </div>
-          
-          <div class="p-4">
-            <div class="flex items-center border border-gray-300 rounded-full px-4 py-2 my-2 bg-gray-50 focus-within:border-[#2D7A4C] focus-within:bg-white transition-all">
-              <i data-lucide="search" class="w-4 h-4 text-gray-400 mr-2"></i>
-              <input 
-                type="text" 
-                placeholder="ค้นหาชื่อยา..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                class="w-full bg-transparent text-sm focus:outline-none"
-              />
-            </div>
-
-            <div class="flex justify-between items-center my-3">
-              <h3 class="font-bold text-base text-gray-800">ผลิตภัณฑ์ยา</h3>
-              <span class="text-xs text-gray-400">ทั้งหมด {medicines.length} รายการ</span>
-            </div>
-
-            <div class="space-y-3">
-              {isLoading ? (
-                <div class="text-center text-gray-400 py-10 text-sm">กำลังโหลดข้อมูลยา...</div>
-              ) : filteredMeds.length > 0 ? (
-                filteredMeds.map((item, idx) => (
-                  <div key={idx} class="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="pr-2">
-                      <h4 class="font-bold text-gray-900 text-sm">{item.title}</h4>
-                      <p class="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{item.sub}</p>
-                    </div>
-                    <button class="text-gray-400 hover:text-yellow-500 p-1 flex-shrink-0">
-                      <i data-lucide="star" class="w-5 h-5"></i>
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div class="text-center text-gray-400 py-10 text-sm border-2 border-dashed border-gray-200 rounded-2xl my-4">
-                  <p>ยังไม่มีข้อมูลยาในระบบ</p>
-                  <p class="text-xs text-gray-400 mt-1">กดปุ่ม <span class="font-bold text-[#2D7A4C]">"📁 นำเข้า .xlsx"</span> มุมขวาบนเพื่อเลือกไฟล์ <code class="bg-gray-100 px-1 py-0.5 rounded text-gray-600">datadrug.xlsx</code></p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 2. My Meds Screen
-    function MyMedsScreen() {
-      return (
-        <div className="flex-1 flex flex-col pb-6">
-          <div className="py-4 text-center font-bold text-lg text-gray-800 border-b border-gray-100">
-            ยาของฉัน
-          </div>
-          
-          <div className="p-4 space-y-4">
-            <div className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:border-green-300 transition-all cursor-pointer">
-              <div className="p-3 bg-red-50 text-red-500 rounded-xl mr-4">
-                <i data-lucide="heart" className="w-7 h-7"></i>
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-800 text-base">ยาประจำ</h4>
-                <p className="text-xs text-gray-500 mt-0.5">บันทึกยาที่ทานประจำของคุณ</p>
-              </div>
-            </div>
-
-            <div className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:border-green-300 transition-all cursor-pointer">
-              <div className="p-3 bg-blue-50 text-blue-500 rounded-xl mr-4">
-                <i data-lucide="calendar" className="w-7 h-7"></i>
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-800 text-base">วันนัดหมาย</h4>
-                <p className="text-xs text-gray-500 mt-0.5">บันทึกวันนัดหมายแพทย์ของคุณ</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 3. Camera / Scan Screen (พร้อมระบบ LLM RAG จำลองสำหรับวิเคราะห์ภาพและสืบค้นคลังยา)
-    function ScanScreen({ medicines }) {
-      const [isProcessing, setIsProcessing] = useState(false);
-      const [ragResult, setRagResult] = useState(null);
-
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }, [isProcessing, ragResult]);
-
-      // จำลองการทำงานของ LLM Vision + RAG Pipeline
-      const processRAGScan = (sourceName = 'ภาพถ่ายเม็ดยา/ซองยา') => {
-        setIsProcessing(true);
-        setRagResult(null);
-
-        setTimeout(() => {
-          // 1. Retrieval Step: สืบค้นจากคลังยาที่มี
-          let matchedMed = null;
-          if (medicines && medicines.length > 0) {
-            // สุ่มหรือเลือกยาตัวแรกจากคลังมาสืบค้น
-            matchedMed = medicines[Math.floor(Math.random() * medicines.length)];
-          } else {
-            matchedMed = {
-              title: 'Aluminium hydroxide',
-              sub: 'รูปแบบ: chewable tab | ความแรง: ไม่ระบุ | หมายเหตุ: ไม่มี'
-            };
-          }
-
-          // 2. Generation Step: LLM สร้างคำตอบสรุปผลพร้อมบริบท RAG
-          setRagResult({
-            source: sourceName,
-            drugName: matchedMed.title,
-            details: matchedMed.sub,
-            aiAdvice: `จากการวิเคราะห์ภาพตัวอย่างและสืบค้นฐานข้อมูล NLEM (RAG): ยานี้คือ ${matchedMed.title} มีสรรพคุณตามหมวดหมู่ ควรใช้ภายใต้คำแนะนำของแพทย์หรือเภสัชกร`,
-            confidence: (89 + Math.floor(Math.random() * 10)) + '%'
-          });
-
-          setIsProcessing(false);
-        }, 2200);
-      };
-
-      const handleImageSelect = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          processRAGScan(`ภาพไฟล์ ${file.name}`);
-        }
-      };
-
-      return (
-        <div class="flex-1 bg-[#B2C8C6] h-full flex flex-col justify-center items-center relative overflow-hidden">
-          
-          {/* กรอบเล็งสแกน */}
-          <div class="w-[80%] h-[55%] border-2 border-white/80 rounded-3xl relative flex items-center justify-center shadow-2xl overflow-hidden backdrop-blur-[1px]">
-            <div class="absolute top-3 left-3 w-6 h-6 border-t-4 border-l-4 border-white"></div>
-            <div class="absolute top-3 right-3 w-6 h-6 border-t-4 border-r-4 border-white"></div>
-            <div class="absolute bottom-3 left-3 w-6 h-6 border-b-4 border-l-4 border-white"></div>
-            <div class="absolute bottom-3 right-3 w-6 h-6 border-b-4 border-r-4 border-white"></div>
-            
-            <div class="w-full h-0.5 bg-green-400 shadow-[0_0_12px_#4ade80] absolute scan-line"></div>
-            
-            <div class="bg-black/40 backdrop-blur-md px-4 py-2 rounded-full flex items-center space-x-2 text-white/90 text-xs font-medium z-10">
-              <i data-lucide="sparkles" class="w-4 h-4 text-yellow-300"></i>
-              <span>LLM RAG Vision Mode</span>
-            </div>
-          </div>
-
-          <p class="text-white/90 text-xs font-medium mt-4 tracking-wide bg-black/30 px-4 py-1.5 rounded-full">
-            จัดวางเม็ดยา/ซองยาให้อยู่ในกรอบ หรือเลือกรูปภาพ
-          </p>
-
-          {/* ปุ่มสแกน / สั่งงาน */}
-          <div class="absolute bottom-6 flex items-center justify-center space-x-6 w-full px-8">
-            {/* ปุ่มคลังภาพ */}
-            <label class="bg-black/40 hover:bg-black/60 text-white p-3.5 rounded-2xl backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer">
-              <i data-lucide="image" class="w-6 h-6"></i>
-              <input type="file" accept="image/*" onChange={handleImageSelect} class="hidden" />
-            </label>
-
-            {/* ปุ่มกดจำลองการถ่ายและ RAG สแกน */}
-            <button 
-              onClick={() => processRAGScan()}
-              disabled={isProcessing}
-              class="w-16 h-16 bg-white rounded-full border-4 border-green-500 shadow-xl flex items-center justify-center active:scale-90 transition-all disabled:opacity-50"
-            >
-              <div class="w-12 h-12 rounded-full bg-[#004D25] flex items-center justify-center text-white">
-                <i data-lucide="scan-line" class="w-6 h-6"></i>
-              </div>
-            </button>
-          </div>
-
-          {/* Modal สถานะการประมวลผล LLM RAG */}
-          {isProcessing && (
-            <div class="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-white p-6">
-              <div class="w-12 h-12 border-4 border-green-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <h4 class="font-bold text-base mb-1">กำลังวิเคราะห์ด้วย LLM RAG...</h4>
-              <p class="text-xs text-gray-300 text-center">กำลังตรวจจับภาพยาและสืบค้นคลังข้อมูล NLEM</p>
-            </div>
-          )}
-
-          {/* Modal แสดงผลลัพธ์ RAG */}
-          {ragResult && (
-            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-              <div class="bg-white w-full rounded-3xl p-5 shadow-2xl space-y-4 max-h-[80%] overflow-y-auto animate-in slide-in-from-bottom duration-300">
-                <div class="flex justify-between items-start border-b border-gray-100 pb-3">
-                  <div class="flex items-center space-x-2">
-                    <div class="p-2 bg-green-100 text-[#2D7A4C] rounded-xl">
-                      <i data-lucide="bot" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                      <h3 class="font-bold text-gray-900 text-base">ผลลัพธ์การวิเคราะห์ RAG AI</h3>
-                      <p class="text-[10px] text-gray-400">ระดับความแม่นยำ: {ragResult.confidence}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setRagResult(null)} class="text-gray-400 hover:text-gray-600 p-1">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                  </button>
-                </div>
-
-                <div class="bg-green-50/60 p-3.5 rounded-2xl border border-green-100 space-y-1">
-                  <span class="text-[10px] font-bold text-[#2D7A4C] uppercase tracking-wider">ยาที่ตรวจพบในคลังข้อมูล</span>
-                  <h4 class="font-bold text-gray-800 text-base">{ragResult.drugName}</h4>
-                  <p class="text-xs text-gray-600 leading-relaxed">{ragResult.details}</p>
-                </div>
-
-                <div class="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
-                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">คำแนะนำเพิ่มเติมจาก LLM Agent</span>
-                  <p class="text-xs text-gray-700 leading-relaxed">{ragResult.aiAdvice}</p>
-                </div>
-
-                <button 
-                  onClick={() => setRagResult(null)}
-                  class="w-full bg-[#388E3C] text-white font-bold py-3 rounded-xl text-sm shadow hover:bg-[#2e7d32] active:scale-95 transition-all"
-                >
-                  ตกลง / ปิดหน้าต่าง
-                </button>
-              </div>
-            </div>
-          )}
-
-        </div>
-      );
-    }
-
-    // 4. Pharmacy Screen
-    function PharmacyScreen() {
-      const pharmacies = [
-        { name: 'ร้านยาสุขใจ สาขาคลองหลวง', detail: 'เปิดถึง 21:00 น. • พาราเซตามอล 15฿', dist: '0.6 กม.' },
-        { name: 'เภสัชกรใกล้บ้าน', detail: 'เปิดถึง 22:00 น. • พาราเซตามอล 18฿', dist: '1.2 กม.' },
-        { name: 'คลังยาชุมชน', detail: 'เปิด 24 ชั่วโมง • พาราเซตามอล 15฿', dist: '2.5 กม.' },
-      ];
-
-      return (
-        <div class="flex-1 flex flex-col h-full bg-white">
-          <div class="bg-[#004D25] text-white px-5 py-4 font-bold text-lg shadow-sm">
-            ร้านขายยาใกล้ฉัน
-          </div>
-          
-          <div className="h-52 w-full border-b border-green-100 overflow-hidden">
-            <iframe
-              title="pharmacy-map"
-              width="100%"
-              height="100%"
-              style={{ border: 0 }}
-              loading="lazy"
-              allowFullScreen
-              src="https://maps.google.com/maps?q=ร้านขายยาใกล้ฉัน&t=&z=13&ie=UTF8&iwloc=&output=embed"
-            ></iframe>
-          </div>
-
-          <div class="flex-1 p-4 divide-y divide-gray-100 overflow-y-auto">
-            {pharmacies.map((shop, i) => (
-              <div key={i} class="py-3.5 flex justify-between items-center hover:bg-gray-50 px-2 rounded-xl transition-colors">
-                <div>
-                  <h4 class="font-bold text-gray-900 text-sm">{shop.name}</h4>
-                  <p class="text-xs text-gray-500 mt-1">{shop.detail}</p>
-                </div>
-                <span class="text-xs font-bold text-[#2D7A4C] bg-green-50 px-2.5 py-1 rounded-full whitespace-nowrap">
-                  {shop.dist}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    // 5. Settings Screen
-    function SettingsScreen({ setCurrentScreen }) {
-      return (
-        <div class="flex-1 flex flex-col pb-6">
-          <div class="py-4 text-center font-bold text-lg text-gray-800 border-b border-gray-100">
-            ตั้งค่า
-          </div>
-
-          <div class="p-4 space-y-2">
-            <div class="p-3 flex items-center justify-between hover:bg-gray-50 rounded-xl cursor-pointer">
-              <div class="flex items-center space-x-3">
-                <i data-lucide="user" class="w-5 h-5 text-gray-600"></i>
-                <span class="text-sm font-medium text-gray-700">ข้อมูลส่วนตัว</span>
-              </div>
-              <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400"></i>
-            </div>
-
-            <div class="p-3 flex items-center justify-between hover:bg-gray-50 rounded-xl cursor-pointer">
-              <div class="flex items-center space-x-3">
-                <i data-lucide="bell" class="w-5 h-5 text-gray-600"></i>
-                <span class="text-sm font-medium text-gray-700">การแจ้งเตือนทานยา</span>
-              </div>
-              <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400"></i>
-            </div>
-
-            <div class="p-3 flex items-center justify-between hover:bg-gray-50 rounded-xl cursor-pointer">
-              <div class="flex items-center space-x-3">
-                <i data-lucide="shield-check" class="w-5 h-5 text-gray-600"></i>
-                <span class="text-sm font-medium text-gray-700">ความเป็นส่วนตัวและความปลอดภัย</span>
-              </div>
-              <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400"></i>
-            </div>
-
-            <div 
-              onClick={() => setCurrentScreen('welcome')}
-              class="p-3 flex items-center justify-between hover:bg-red-50 rounded-xl cursor-pointer text-red-600 mt-6"
-            >
-              <div class="flex items-center space-x-3">
-                <i data-lucide="log-out" class="w-5 h-5"></i>
-                <span class="text-sm font-bold">ออกจากระบบ</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Render App
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
-</body>
-</html>
+import React, { useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
+} from 'react-native';
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+
+export default function App() {
+  const [currentScreen, setCurrentScreen] = useState('welcome'); // welcome, login, home, scan, mymeds, pharmacy
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  // 1. หน้า Welcome (ต้อนรับ)
+  if (currentScreen === 'welcome') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.centerContent}>
+          <View style={styles.logoCircle}>
+            <MaterialCommunityIcons name="medical-bag" size={60} color="#2D7A4C" />
+            <Text style={styles.logoSubText}>PAOYA</Text>
+          </View>
+          <Text style={styles.welcomeTitle}>เป๋ายา</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => setCurrentScreen('login')}>
+          <Text style={styles.primaryButtonText}>เข้าใช้งาน</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // 2. หน้า Login
+  if (currentScreen === 'login') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <TouchableOpacity style={styles.backButton} onPress={() => setCurrentScreen('welcome')}>
+          <Ionicons name="chevron-back" size={28} color="#666" />
+        </TouchableOpacity>
+        <View style={styles.authContainer}>
+          <View style={styles.pillIconHeader}>
+            <MaterialCommunityIcons name="pill" size={40} color="#333" />
+          </View>
+          <Text style={styles.authTitle}>เข้าสู่ระบบ</Text>
+
+          <Text style={styles.inputLabel}>อีเมล หรือ ชื่อผู้ใช้</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="ใส่อีเมล หรือ ชื่อผู้ใช้"
+            value={email}
+            onChangeText={setEmail}
+          />
+
+          <Text style={styles.inputLabel}>รหัสผ่าน</Text>
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="ใส่รหัสผ่าน"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+            <Ionicons name="eye-off-outline" size={20} color="#666" />
+          </View>
+
+          <TouchableOpacity style={styles.linkRight}>
+            <Text style={styles.linkText}>ลืมรหัสผ่าน</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.linkRight}>
+            <Text style={styles.linkText}>สร้างบัญชี</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.primaryButton, styles.disabledBtn]}
+            onPress={() => setCurrentScreen('home')}>
+            <Text style={styles.disabledBtnText}>ยืนยัน</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // 3. หน้าจอหลักของแอปที่มี Bottom Nav (Home, MyMeds, Scan, Pharmacy)
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Dynamic Content */}
+      <View style={{ flex: 1 }}>
+        {currentScreen === 'home' && <HomeScreen />}
+        {currentScreen === 'mymeds' && <MyMedsScreen />}
+        {currentScreen === 'scan' && <ScanScreen />}
+        {currentScreen === 'pharmacy' && <PharmacyScreen />}
+      </View>
+
+      {/* Floating Chat Button */}
+      <TouchableOpacity style={styles.floatingChatBtn}>
+        <Ionicons name="chatbubble-ellipses-outline" size={28} color="#2D7A4C" />
+      </TouchableOpacity>
+
+      {/* Bottom Navigation Bar */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen('home')}>
+          <Ionicons name="home" size={24} color={currentScreen === 'home' ? '#1B5E20' : '#8E8E93'} />
+          <Text style={[styles.navLabel, currentScreen === 'home' && styles.navLabelActive]}>หน้าหลัก</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen('mymeds')}>
+          <MaterialCommunityIcons name="medical-bag" size={24} color={currentScreen === 'mymeds' ? '#1B5E20' : '#8E8E93'} />
+          <Text style={[styles.navLabel, currentScreen === 'mymeds' && styles.navLabelActive]}>ยาของฉัน</Text>
+        </TouchableOpacity>
+
+        {/* Scan Center Button */}
+        <TouchableOpacity style={styles.scanNavItem} onPress={() => setCurrentScreen('scan')}>
+          <View style={styles.scanIconBox}>
+            <Ionicons name="scan-outline" size={28} color="#FFF" />
+          </View>
+          <Text style={styles.scanLabel}>สแกน</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen('pharmacy')}>
+          <Ionicons name="location" size={24} color={currentScreen === 'pharmacy' ? '#1B5E20' : '#8E8E93'} />
+          <Text style={[styles.navLabel, currentScreen === 'pharmacy' && styles.navLabelActive]}>ร้านยา</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem}>
+          <Ionicons name="settings-sharp" size={24} color="#8E8E93" />
+          <Text style={styles.navLabel}>ตั้งค่า</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ---- Components ย่อยของแต่ละหน้า ---- //
+
+function HomeScreen() {
+  const medicines = [
+    { title: 'พาราเซตามอล', sub: 'Paracetamol  บรรเทาปวด ลดไข้' },
+    { title: 'อะม็อกซี่', sub: 'Amoxicillin  ยาปฏิชีวนะ' },
+    { title: 'บรูเฟน', sub: 'Ibuprofen  ยาต้านการอักเสบชนิดไม่ใช่สเตียรอยด์ (NSAID)' },
+    { title: 'เมทฟอร์มิน', sub: 'Metformin  ยาควบคุมเบาหวานชนิดรับประทาน' },
+  ];
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.topHeaderBar}>
+        <Text style={styles.topHeaderTitle}>สวัสดี คุณยาเมเต</Text>
+      </View>
+      <ScrollView style={styles.contentPadding}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#888" style={{ marginRight: 8 }} />
+          <TextInput placeholder="ค้นหาชื่อยา" style={{ flex: 1 }} />
+        </View>
+        <Text style={styles.sectionTitle}>ผลิตภัณฑ์ยา</Text>
+        {medicines.map((item, index) => (
+          <View key={index} style={styles.medCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.medTitle}>{item.title}</Text>
+              <Text style={styles.medSub}>{item.sub}</Text>
+            </View>
+            <Ionicons name="star-outline" size={22} color="#333" />
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function MyMedsScreen() {
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.simpleHeader}>
+        <Text style={styles.simpleHeaderTitle}>ยาของฉัน</Text>
+      </View>
+      <View style={styles.contentPadding}>
+        <View style={styles.menuCard}>
+          <Ionicons name="heart-outline" size={32} color="#333" style={{ marginRight: 15 }} />
+          <View>
+            <Text style={styles.menuCardTitle}>ยาประจำ</Text>
+            <Text style={styles.menuCardSub}>บันทึกยาที่ทานประจำของคุณ</Text>
+          </View>
+        </View>
+
+        <View style={styles.menuCard}>
+          <Ionicons name="calendar-outline" size={32} color="#333" style={{ marginRight: 15 }} />
+          <View>
+            <Text style={styles.menuCardTitle}>วันนัดหมาย</Text>
+            <Text style={styles.menuCardSub}>บันทึกวันนัดหมายแพทย์ของคุณ</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ScanScreen() {
+  return (
+    <View style={styles.scanBgContainer}>
+      <View style={styles.cameraFrame}>
+        <View style={styles.scanTargetBox} />
+      </View>
+      <TouchableOpacity style={styles.galleryIconBtn}>
+        <Ionicons name="image-outline" size={26} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function PharmacyScreen() {
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.topHeaderBar}>
+        <Text style={styles.topHeaderTitle}>ร้านขายยาใกล้ฉัน</Text>
+      </View>
+      <View style={styles.mapPlaceholder}>
+        <Text style={{ color: '#2D7A4C', fontWeight: 'bold' }}>📍 [ส่วนแสดงแผนที่ Map]</Text>
+      </View>
+      <View style={[styles.contentPadding, { flex: 1, backgroundColor: '#FFF' }]}>
+        <View style={styles.pharmacyItem}>
+          <View>
+            <Text style={styles.pharmacyName}>ร้านยาสุขใจ สาขาคลองหลวง</Text>
+            <Text style={styles.pharmacySub}>เปิดถึง 21:00 น.  พาราเซตามอล 15฿</Text>
+          </View>
+          <Text style={styles.distanceText}>0.6 กม.</Text>
+        </View>
+        <View style={styles.pharmacyItem}>
+          <View>
+            <Text style={styles.pharmacyName}>เภสัชกรใกล้บ้าน</Text>
+            <Text style={styles.pharmacySub}>เปิดถึง 22:00 น.  พาราเซตามอล 18฿</Text>
+          </View>
+          <Text style={styles.distanceText}>1.2 กม.</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ---- Styling (ปรับตามสไตล์ Figma) ---- //
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 4,
+    borderColor: '#2D7A4C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoSubText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2D7A4C',
+    marginTop: 4,
+  },
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2D7A4C',
+    marginTop: 20,
+  },
+  primaryButton: {
+    backgroundColor: '#388E3C',
+    paddingVertical: 14,
+    marginHorizontal: 40,
+    borderRadius: 25,
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  primaryButtonText: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  backButton: {
+    padding: 16,
+  },
+  authContainer: {
+    paddingHorizontal: 30,
+    flex: 1,
+  },
+  pillIconHeader: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  authTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 30,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  passwordWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 14,
+  },
+  linkRight: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+  },
+  linkText: {
+    color: '#2D7A4C',
+    textDecorationLine: 'underline',
+  },
+  disabledBtn: {
+    backgroundColor: '#E0E0E0',
+    marginTop: 30,
+  },
+  disabledBtnText: {
+    color: '#888',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  topHeaderBar: {
+    backgroundColor: '#004D25',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  topHeaderTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  simpleHeader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  simpleHeaderTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  contentPadding: {
+    padding: 16,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginVertical: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginVertical: 12,
+  },
+  medCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  medTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  medSub: {
+    fontSize: 12,
+    color: '#666',
+  },
+  menuCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 15,
+  },
+  menuCardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  menuCardSub: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  scanBgContainer: {
+    flex: 1,
+    backgroundColor: '#B2C8C6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraFrame: {
+    width: '80%',
+    height: '65%',
+    borderWidth: 3,
+    borderColor: '#FFF',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanTargetBox: {
+    width: '100%',
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  galleryIconBtn: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 12,
+    borderRadius: 10,
+  },
+  mapPlaceholder: {
+    height: 220,
+    backgroundColor: '#E5F0EC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pharmacyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  pharmacyName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  pharmacySub: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  distanceText: {
+    fontSize: 14,
+    color: '#2D7A4C',
+    fontWeight: 'bold',
+  },
+  floatingChatBtn: {
+    position: 'absolute',
+    bottom: 75,
+    right: 20,
+    backgroundColor: '#E8F5E9',
+    padding: 12,
+    borderRadius: 25,
+    elevation: 4,
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    height: 65,
+    backgroundColor: '#E8F8F0',
+    borderTopWidth: 1,
+    borderTopColor: '#D0EBE0',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  navItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  navLabel: {
+    fontSize: 10,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  navLabelActive: {
+    color: '#1B5E20',
+    fontWeight: 'bold',
+  },
+  scanNavItem: {
+    alignItems: 'center',
+    top: -15,
+  },
+  scanIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#004D25',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanLabel: {
+    fontSize: 10,
+    color: '#1B5E20',
+    marginTop: 2,
+    fontWeight: 'bold',
+  },
+});
