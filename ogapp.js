@@ -57,14 +57,14 @@
 
     // ฟังก์ชันแปลงข้อมูล Sheet Excel เป็นรูปแบบใช้งานในแอป
     function processWorkbook(workbook) {
-      // ค้นหา Sheet ที่มีชื่อข้อมูลยา หรือเลือก Sheet สุดท้าย
       const sheetName = workbook.SheetNames.find(name => name.includes('Data') || name.includes('NLEM')) || workbook.SheetNames[workbook.SheetNames.length - 1];
       const sheet = workbook.Sheets[sheetName];
       const parsedData = XLSX.utils.sheet_to_json(sheet);
 
       return parsedData.map(item => ({
         title: item['ชื่อสามัญทางยา (Generic Name)'] || item['ชื่อยา'] || 'ไม่ระบุชื่อยา',
-        sub: `รูปแบบ: ${item['รูปแบบยา (Dosage Form)'] || '-'} | ความแรง: ${item['ความแรง / เกลือ (Strength/Salt)'] || '-'} | หมายเหตุ: ${item['คำเตือน / หมายเหตุเพิ่มเติม'] || 'ไม่มี'}`
+        sub: `รูปแบบ: ${item['รูปแบบยา (Dosage Form)'] || '-'} | ความแรง: ${item['ความแรง / เกลือ (Strength/Salt)'] || '-'} | หมายเหตุ: ${item['คำเตือน / หมายเหตุเพิ่มเติม'] || 'ไม่มี'}`,
+        raw: item
       }));
     }
 
@@ -79,7 +79,7 @@
       const [medicines, setMedicines] = useState([]);
       const [isLoading, setIsLoading] = useState(true);
 
-      // โหลดไฟล์ datadrug.xlsx อัตโนมัติเมื่อเปิดแอปผ่าน Live Server
+      // โหลดไฟล์ datadrug.xlsx อัตโนมัติเมื่อเปิดแอป
       useEffect(() => {
         fetch('datadrug.xlsx')
           .then(res => {
@@ -235,7 +235,7 @@
                   />
                 )}
                 {currentScreen === 'mymeds' && <MyMedsScreen />}
-                {currentScreen === 'scan' && <ScanScreen />}
+                {currentScreen === 'scan' && <ScanScreen medicines={medicines} />}
                 {currentScreen === 'pharmacy' && <PharmacyScreen />}
                 {currentScreen === 'settings' && <SettingsScreen setCurrentScreen={setCurrentScreen} />}
               </div>
@@ -451,7 +451,7 @@
                 <label class="block text-sm text-gray-600 mb-1.5 font-medium">ยืนยันรหัสผ่าน</label>
                 <div class="relative flex items-center">
                   <input 
-                    type={showConfirmConfirmNewPassword ? "text" : "password"} 
+                    type={showConfirmNewPassword ? "text" : "password"} 
                     placeholder="ยืนยันรหัสผ่านใหม่อีกครั้ง" 
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
@@ -767,26 +767,146 @@
       );
     }
 
-    // 3. Camera / Scan Screen
-    function ScanScreen() {
+    // 3. Camera / Scan Screen (พร้อมระบบ LLM RAG จำลองสำหรับวิเคราะห์ภาพและสืบค้นคลังยา)
+    function ScanScreen({ medicines }) {
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [ragResult, setRagResult] = useState(null);
+
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [isProcessing, ragResult]);
+
+      // จำลองการทำงานของ LLM Vision + RAG Pipeline
+      const processRAGScan = (sourceName = 'ภาพถ่ายเม็ดยา/ซองยา') => {
+        setIsProcessing(true);
+        setRagResult(null);
+
+        setTimeout(() => {
+          // 1. Retrieval Step: สืบค้นจากคลังยาที่มี
+          let matchedMed = null;
+          if (medicines && medicines.length > 0) {
+            // สุ่มหรือเลือกยาตัวแรกจากคลังมาสืบค้น
+            matchedMed = medicines[Math.floor(Math.random() * medicines.length)];
+          } else {
+            matchedMed = {
+              title: 'Aluminium hydroxide',
+              sub: 'รูปแบบ: chewable tab | ความแรง: ไม่ระบุ | หมายเหตุ: ไม่มี'
+            };
+          }
+
+          // 2. Generation Step: LLM สร้างคำตอบสรุปผลพร้อมบริบท RAG
+          setRagResult({
+            source: sourceName,
+            drugName: matchedMed.title,
+            details: matchedMed.sub,
+            aiAdvice: `จากการวิเคราะห์ภาพตัวอย่างและสืบค้นฐานข้อมูล NLEM (RAG): ยานี้คือ ${matchedMed.title} มีสรรพคุณตามหมวดหมู่ ควรใช้ภายใต้คำแนะนำของแพทย์หรือเภสัชกร`,
+            confidence: (89 + Math.floor(Math.random() * 10)) + '%'
+          });
+
+          setIsProcessing(false);
+        }, 2200);
+      };
+
+      const handleImageSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          processRAGScan(`ภาพไฟล์ ${file.name}`);
+        }
+      };
+
       return (
         <div class="flex-1 bg-[#B2C8C6] h-full flex flex-col justify-center items-center relative overflow-hidden">
-          <div class="w-[80%] h-[60%] border-2 border-white/80 rounded-3xl relative flex items-center justify-center shadow-2xl overflow-hidden backdrop-blur-[1px]">
+          
+          {/* กรอบเล็งสแกน */}
+          <div class="w-[80%] h-[55%] border-2 border-white/80 rounded-3xl relative flex items-center justify-center shadow-2xl overflow-hidden backdrop-blur-[1px]">
             <div class="absolute top-3 left-3 w-6 h-6 border-t-4 border-l-4 border-white"></div>
             <div class="absolute top-3 right-3 w-6 h-6 border-t-4 border-r-4 border-white"></div>
             <div class="absolute bottom-3 left-3 w-6 h-6 border-b-4 border-l-4 border-white"></div>
             <div class="absolute bottom-3 right-3 w-6 h-6 border-b-4 border-r-4 border-white"></div>
             
             <div class="w-full h-0.5 bg-green-400 shadow-[0_0_12px_#4ade80] absolute scan-line"></div>
-            <p class="text-white/80 text-xs font-medium tracking-wide bg-black/30 px-3 py-1 rounded-full">จัดวางเม็ดยา/ซองยาให้อยู่ในกรอบ</p>
+            
+            <div class="bg-black/40 backdrop-blur-md px-4 py-2 rounded-full flex items-center space-x-2 text-white/90 text-xs font-medium z-10">
+              <i data-lucide="sparkles" class="w-4 h-4 text-yellow-300"></i>
+              <span>LLM RAG Vision Mode</span>
+            </div>
           </div>
 
-          <button 
-            onClick={() => alert('เปิดคลังภาพของคุณเพื่อเลือกรูปยา')}
-            class="absolute bottom-6 right-6 bg-black/40 hover:bg-black/60 text-white p-3 rounded-2xl backdrop-blur-md border border-white/20 active:scale-95 transition-all"
-          >
-            <i data-lucide="image" class="w-6 h-6"></i>
-          </button>
+          <p class="text-white/90 text-xs font-medium mt-4 tracking-wide bg-black/30 px-4 py-1.5 rounded-full">
+            จัดวางเม็ดยา/ซองยาให้อยู่ในกรอบ หรือเลือกรูปภาพ
+          </p>
+
+          {/* ปุ่มสแกน / สั่งงาน */}
+          <div class="absolute bottom-6 flex items-center justify-center space-x-6 w-full px-8">
+            {/* ปุ่มคลังภาพ */}
+            <label class="bg-black/40 hover:bg-black/60 text-white p-3.5 rounded-2xl backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer">
+              <i data-lucide="image" class="w-6 h-6"></i>
+              <input type="file" accept="image/*" onChange={handleImageSelect} class="hidden" />
+            </label>
+
+            {/* ปุ่มกดจำลองการถ่ายและ RAG สแกน */}
+            <button 
+              onClick={() => processRAGScan()}
+              disabled={isProcessing}
+              class="w-16 h-16 bg-white rounded-full border-4 border-green-500 shadow-xl flex items-center justify-center active:scale-90 transition-all disabled:opacity-50"
+            >
+              <div class="w-12 h-12 rounded-full bg-[#004D25] flex items-center justify-center text-white">
+                <i data-lucide="scan-line" class="w-6 h-6"></i>
+              </div>
+            </button>
+          </div>
+
+          {/* Modal สถานะการประมวลผล LLM RAG */}
+          {isProcessing && (
+            <div class="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-white p-6">
+              <div class="w-12 h-12 border-4 border-green-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <h4 class="font-bold text-base mb-1">กำลังวิเคราะห์ด้วย LLM RAG...</h4>
+              <p class="text-xs text-gray-300 text-center">กำลังตรวจจับภาพยาและสืบค้นคลังข้อมูล NLEM</p>
+            </div>
+          )}
+
+          {/* Modal แสดงผลลัพธ์ RAG */}
+          {ragResult && (
+            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+              <div class="bg-white w-full rounded-3xl p-5 shadow-2xl space-y-4 max-h-[80%] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+                <div class="flex justify-between items-start border-b border-gray-100 pb-3">
+                  <div class="flex items-center space-x-2">
+                    <div class="p-2 bg-green-100 text-[#2D7A4C] rounded-xl">
+                      <i data-lucide="bot" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-gray-900 text-base">ผลลัพธ์การวิเคราะห์ RAG AI</h3>
+                      <p class="text-[10px] text-gray-400">ระดับความแม่นยำ: {ragResult.confidence}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setRagResult(null)} class="text-gray-400 hover:text-gray-600 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                  </button>
+                </div>
+
+                <div class="bg-green-50/60 p-3.5 rounded-2xl border border-green-100 space-y-1">
+                  <span class="text-[10px] font-bold text-[#2D7A4C] uppercase tracking-wider">ยาที่ตรวจพบในคลังข้อมูล</span>
+                  <h4 class="font-bold text-gray-800 text-base">{ragResult.drugName}</h4>
+                  <p class="text-xs text-gray-600 leading-relaxed">{ragResult.details}</p>
+                </div>
+
+                <div class="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">คำแนะนำเพิ่มเติมจาก LLM Agent</span>
+                  <p class="text-xs text-gray-700 leading-relaxed">{ragResult.aiAdvice}</p>
+                </div>
+
+                <button 
+                  onClick={() => setRagResult(null)}
+                  class="w-full bg-[#388E3C] text-white font-bold py-3 rounded-xl text-sm shadow hover:bg-[#2e7d32] active:scale-95 transition-all"
+                >
+                  ตกลง / ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     }
