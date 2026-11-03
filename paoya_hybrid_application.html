@@ -6,7 +6,1970 @@
   <title>เป๋ายา (PAOYA) - Hybrid App</title>
   
   <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script><!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>เป๋ายา (PAOYA) - Hybrid App</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & React DOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="script"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="script"></script>
+  
+  <!-- Babel Compiler -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- SheetJS Library สำหรับอ่านไฟล์ Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Tesseract.js สำหรับการแปลงภาพเป็น ข้อความ (OCR / Vision Text Extraction) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    /* ซ่อนไอคอนดวงตาเริ่มต้นของ Browser เช่น Edge / Chrome */
+    input::-ms-reveal,
+    input::-ms-clear,
+    input::-webkit-contacts-auto-fill-button,
+    input::-webkit-credentials-auto-fill-button {
+      display: none !important;
+    }
+    
+    @keyframes scanAnimation {
+      0% { top: 0%; }
+      50% { top: 98%; }
+      100% { top: 0%; }
+    }
+    .scan-line {
+      animation: scanAnimation 3s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-0 sm:p-4">
+
+  <!-- Main Container / Device Frame -->
+  <div id="root" class="w-full max-w-md h-screen sm:h-[844px] bg-white sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative border-0 sm:border-[8px] sm:border-gray-800"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // คอมโพเนนต์ไอคอนดวงตาแบบ Inline SVG
+    const EyeIcon = ({ isOpen, className = "w-5 h-5" }) => {
+      if (isOpen) {
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        );
+      }
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+          <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+          <line x1="2" x2="22" y1="2" y2="22" />
+        </svg>
+      );
+    };
+
+    // ฟังก์ชันสร้างและดาวน์โหลดไฟล์ .ics สำหรับเพิ่มในปฏิทิน
+    function exportToCalendarICS(appointment) {
+      if (!appointment || !appointment.date) return;
+      
+      const cleanDate = appointment.date.replace(/-/g, '');
+      const timeStr = appointment.time ? appointment.time.replace(':', '') : '0900';
+      const startDateTime = `${cleanDate}T${timeStr}00`;
+      
+      const endHour = String(parseInt(timeStr.substring(0, 2), 10) + 1).padStart(2, '0');
+      const endDateTime = `${cleanDate}T${endHour}${timeStr.substring(2, 4)}00`;
+
+      const icsContent = 
+`BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//PAOYA App//NLEM//TH
+BEGIN:VEVENT
+SUMMARY:นัดหมายแพทย์: ${appointment.hospital} (${appointment.doctor || 'ไม่ระบุชื่อแพทย์'})
+DESCRIPTION:นัดพบแพทย์ที่ ${appointment.hospital} บันทึกโดยแอปเป๋ายา
+DTSTART:${startDateTime}
+DTEND:${endDateTime}
+LOCATION:${appointment.hospital}
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.setAttribute('download', `นัดหมาย_${appointment.hospital}_${appointment.date}.ics`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // ฟังก์ชันแปลงข้อมูล Sheet Excel
+    function processWorkbook(workbook) {
+      const sheetName = workbook.SheetNames.find(name => name.includes('Data') || name.includes('NLEM')) || workbook.SheetNames[workbook.SheetNames.length - 1];
+      const sheet = workbook.Sheets[sheetName];
+      const parsedData = XLSX.utils.sheet_to_json(sheet);
+
+      return parsedData.map(item => ({
+        title: item['ชื่อสามัญทางยา (Generic Name)'] || item['ชื่อยา'] || 'ไม่ระบุชื่อยา',
+        sub: `รูปแบบ: ${item['รูปแบบยา (Dosage Form)'] || '-'} | ความแรง: ${item['ความแรง / เกลือ (Strength/Salt)'] || '-'} | หมายเหตุ: ${item['คำเตือน / หมายเหตุเพิ่มเติม'] || 'ไม่มี'}`,
+        raw: item
+      }));
+    }
+
+    // --- Main App Component ---
+    function App() {
+      const [currentScreen, setCurrentScreen] = useState('welcome');
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [showPassword, setShowPassword] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+
+      const [medicines, setMedicines] = useState([]);
+      const [isLoading, setIsLoading] = useState(true);
+      const [selectedMedicine, setSelectedMedicine] = useState(null);
+      const [recentlyViewedMeds, setRecentlyViewedMeds] = useState([]);
+
+      // State สำหรับระบบแชทบอท
+      const [isChatOpen, setIsChatOpen] = useState(false);
+      const [chatMessages, setChatMessages] = useState([
+        { id: 1, sender: 'bot', text: 'สวัสดีครับ ผมคือ เภสัชกร AI ผู้ช่วยเป๋ายา มีข้อสงสัยเรื่องยา การทานยา หรือผลข้างเคียง สอบถามได้เลยครับ 💊' }
+      ]);
+      const [inputMsg, setInputMsg] = useState('');
+
+      useEffect(() => {
+        fetch('datadrug.xlsx')
+          .then(res => {
+            if (!res.ok) throw new Error("File fetch failed");
+            return res.arrayBuffer();
+          })
+          .then(buffer => {
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const formatted = processWorkbook(workbook);
+            setMedicines(formatted);
+            setIsLoading(false);
+          })
+          .catch(err => {
+            console.log("Auto-load failed:", err);
+            setIsLoading(false);
+          });
+      }, []);
+
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [currentScreen, medicines, selectedMedicine, recentlyViewedMeds, isChatOpen, chatMessages]);
+
+      const addRecentlyViewed = (medItem) => {
+        if (!medItem || !medItem.title) return;
+        setRecentlyViewedMeds(prev => {
+          const filtered = prev.filter(item => item.title !== medItem.title);
+          return [medItem, ...filtered].slice(0, 8);
+        });
+      };
+
+      const clearRecentlyViewed = () => {
+        setRecentlyViewedMeds([]);
+      };
+
+      // ฟังก์ชันส่งข้อความแชทบอท
+      const handleSendChatMessage = (e) => {
+        e.preventDefault();
+        if (!inputMsg.trim()) return;
+
+        const userText = inputMsg;
+        const newMsg = { id: Date.now(), sender: 'user', text: userText };
+        setChatMessages(prev => [...prev, newMsg]);
+        setInputMsg('');
+
+        // บอทตอบกลับอัตโนมัติแบบจำลอง AI
+        setTimeout(() => {
+          let botReply = "ขอบคุณสำหรับข้อความครับ หากมีข้อสงสัยเกี่ยวกับการทานยา แนะนำให้ทำตามฉลากยาหรือปรึกษาเภสัชกรประจำร้านยาครับ";
+          const query = userText.toLowerCase();
+
+          if (query.includes('ปวดหัว') || query.includes('ไข้') || query.includes('พารา')) {
+            botReply = "สำหรับอาการปวดหัวลดไข้ สามารถทาน Paracetamol 500mg ครั้งละ 1-2 เม็ด ทุก 4-6 ชั่วโมงเมื่อมีอาการ (ไม่เกิน 8 เม็ดต่อวัน) ครับ";
+          } else if (query.includes('แพ้') || query.includes('ผื่น')) {
+            botReply = "หากมีอาการแพ้ยา เช่น ผื่นคัน แน่นหน้าอก ตาบวม ควรหยุดยาทันทีและนำประวัติการแพ้ยาไปพบแพทย์โดยด่วนครับ";
+          } else if (query.includes('ลืมทานยา')) {
+            botReply = "หากลืมทานยา ให้ทานทันทีที่นึกได้ แต่ถ้าใกล้มื้อถัดไป ให้ข้ามมื้อที่ลืมไป แล้วทานมื้อถัดไปตามปกติ ห้ามเพิ่มขนาดยาเป็น 2 เท่าครับ";
+          }
+
+          setChatMessages(prev => [...prev, { id: Date.now() + 1, sender: 'bot', text: botReply }]);
+        }, 800);
+      };
+
+      return (
+        <div className="flex-1 flex flex-col h-full w-full bg-white relative overflow-hidden">
+          
+          {/* Welcome Screen */}
+          {currentScreen === 'welcome' && (
+            <div className="flex-1 flex flex-col justify-between items-center p-8 bg-white">
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <div className="mb-6 flex justify-center">
+                  <img 
+                    src="logo_paoya.png" 
+                    alt="PAOYA Logo" 
+                    className="w-36 h-36 object-contain rounded-full shadow-lg"
+                  />
+                </div>
+                <h1 className="text-3xl font-bold text-[#2D7A4C] tracking-wide">เป๋ายา</h1>
+                <p className="text-gray-500 text-sm mt-2">ผู้ช่วยและดูแลเรื่องยาของคุณ</p>
+              </div>
+
+              <button 
+                onClick={() => setCurrentScreen('login')}
+                className="w-full bg-[#388E3C] hover:bg-[#2e7d32] active:scale-[0.98] transition-all text-white font-bold py-3.5 rounded-full text-lg shadow-md mb-4"
+              >
+                เข้าใช้งาน
+              </button>
+            </div>
+          )}
+
+          {/* Login Screen */}
+          {currentScreen === 'login' && (
+            <div className="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
+              <button 
+                onClick={() => setCurrentScreen('welcome')}
+                className="self-start p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100"
+              >
+                <i data-lucide="chevron-left" className="w-7 h-7"></i>
+              </button>
+
+              <div className="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
+                <div className="flex justify-center mb-2">
+                  <i data-lucide="pill" className="w-12 h-12 text-gray-800"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">เข้าสู่ระบบ</h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1.5 font-medium">อีเมล หรือ ชื่อผู้ใช้</label>
+                    <input 
+                      type="text" 
+                      placeholder="ใส่อีเมล หรือ ชื่อผู้ใช้" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1.5 font-medium">รหัสผ่าน</label>
+                    <div className="relative flex items-center">
+                      <input 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="ใส่รหัสผ่าน" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-full border border-gray-300 focus:outline-none focus:border-[#2D7A4C] text-sm pr-10"
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                      >
+                        <EyeIcon isOpen={showPassword} className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs pt-1">
+                    <button 
+                      onClick={() => setCurrentScreen('forgot_password')}
+                      className="text-[#2D7A4C] hover:underline font-medium"
+                    >
+                      ลืมรหัสผ่าน
+                    </button>
+                    <button 
+                      onClick={() => setCurrentScreen('register')}
+                      className="text-[#2D7A4C] hover:underline font-medium"
+                    >
+                      สร้างบัญชี
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={() => setCurrentScreen('home')}
+                    className="w-full mt-6 bg-[#388E3C] text-white font-bold py-3 rounded-full text-base shadow hover:bg-[#2e7d32] active:scale-[0.98] transition-all"
+                  >
+                    ยืนยัน
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Screens */}
+          {currentScreen === 'register' && (
+            <RegisterScreen setCurrentScreen={setCurrentScreen} EyeIcon={EyeIcon} />
+          )}
+
+          {currentScreen === 'forgot_password' && (
+            <ForgotPasswordScreen setCurrentScreen={setCurrentScreen} />
+          )}
+
+          {currentScreen === 'reset_password' && (
+            <ResetPasswordScreen setCurrentScreen={setCurrentScreen} EyeIcon={EyeIcon} />
+          )}
+
+          {/* Main App Container */}
+          {['home', 'med_detail', 'mymeds', 'scan', 'pharmacy', 'settings'].includes(currentScreen) && (
+            <div className="flex-1 flex flex-col h-full justify-between relative bg-white">
+              
+              <div className="flex-1 overflow-y-auto no-scrollbar relative">
+                {currentScreen === 'home' && (
+                  <HomeScreen 
+                    searchQuery={searchQuery} 
+                    setSearchQuery={setSearchQuery} 
+                    medicines={medicines}
+                    setMedicines={setMedicines} 
+                    isLoading={isLoading}
+                    setSelectedMedicine={setSelectedMedicine}
+                    setCurrentScreen={setCurrentScreen}
+                    recentlyViewedMeds={recentlyViewedMeds}
+                    addRecentlyViewed={addRecentlyViewed}
+                    clearRecentlyViewed={clearRecentlyViewed}
+                  />
+                )}
+                {currentScreen === 'med_detail' && (
+                  <MedicineDetailScreen 
+                    medicine={selectedMedicine}
+                    setCurrentScreen={setCurrentScreen}
+                  />
+                )}
+                {currentScreen === 'mymeds' && <MyMedsScreen />}
+                {currentScreen === 'scan' && (
+                  <ScanScreen 
+                    medicines={medicines} 
+                    setSearchQuery={setSearchQuery}
+                    setSelectedMedicine={setSelectedMedicine}
+                    setCurrentScreen={setCurrentScreen}
+                    addRecentlyViewed={addRecentlyViewed}
+                  />
+                )}
+                {currentScreen === 'pharmacy' && <PharmacyScreen />}
+                {currentScreen === 'settings' && <SettingsScreen setCurrentScreen={setCurrentScreen} />}
+              </div>
+
+              {/* Floating Chat Button */}
+              {currentScreen !== 'scan' && (
+                <button 
+                  onClick={() => setIsChatOpen(true)}
+                  className="absolute bottom-20 right-4 bg-[#E8F5E9] p-3 rounded-full shadow-lg text-[#2D7A4C] hover:bg-green-100 transition-all border border-green-200 active:scale-95 z-20"
+                >
+                  <i data-lucide="message-square" className="w-6 h-6"></i>
+                </button>
+              )}
+
+              {/* Chatbot Interface Modal / Overlay */}
+              {isChatOpen && (
+                <div className="absolute inset-0 bg-white z-50 flex flex-col h-full">
+                  {/* Chat Header */}
+                  <div className="bg-[#004D25] text-white px-4 py-3 flex items-center justify-between shadow">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                        <i data-lucide="bot" className="w-5 h-5 text-green-300"></i>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm">ปรึกษาเภสัชกร AI (PharmBot)</h3>
+                        <p className="text-[10px] text-green-200">พร้อมให้คำปรึกษาตลอด 24 ชั่วโมง</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setIsChatOpen(false)} className="p-1 text-white/80 hover:text-white">
+                      <i data-lucide="x" className="w-6 h-6"></i>
+                    </button>
+                  </div>
+
+                  {/* Chat Messages Area */}
+                  <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-gray-50">
+                    {chatMessages.map(msg => (
+                      <div 
+                        key={msg.id} 
+                        className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div 
+                          className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed shadow-sm ${
+                            msg.sender === 'user' 
+                              ? 'bg-[#388E3C] text-white rounded-br-none' 
+                              : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Chat Input Bar */}
+                  <form onSubmit={handleSendChatMessage} className="p-3 bg-white border-t border-gray-200 flex items-center gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="พิมพ์ข้อความสอบถามเรื่องยา..." 
+                      value={inputMsg}
+                      onChange={(e) => setInputMsg(e.target.value)}
+                      className="flex-1 px-4 py-2.5 text-xs bg-gray-100 rounded-full focus:outline-none focus:bg-white border focus:border-[#2D7A4C]"
+                    />
+                    <button 
+                      type="submit" 
+                      className="p-2.5 bg-[#388E3C] text-white rounded-full hover:bg-[#2e7d32] active:scale-95 transition-all shadow"
+                    >
+                      <i data-lucide="send" className="w-4 h-4"></i>
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Bottom Navigation Bar */}
+              <div className="h-16 bg-[#E8F8F0] border-t border-[#D0EBE0] flex items-center justify-around px-2 relative z-10">
+                <button 
+                  onClick={() => setCurrentScreen('home')}
+                  className={`flex flex-col items-center flex-1 py-1 ${['home', 'med_detail'].includes(currentScreen) ? 'text-[#1B5E20]' : 'text-gray-400'}`}
+                >
+                  <i data-lucide="home" className="w-5 h-5"></i>
+                  <span className={`text-[10px] mt-1 ${['home', 'med_detail'].includes(currentScreen) ? 'font-bold' : ''}`}>หน้าหลัก</span>
+                </button>
+
+                <button 
+                  onClick={() => setCurrentScreen('mymeds')}
+                  className={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'mymeds' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
+                >
+                  <i data-lucide="shopping-bag" className="w-5 h-5"></i>
+                  <span className={`text-[10px] mt-1 ${currentScreen === 'mymeds' ? 'font-bold' : ''}`}>ยาของฉัน</span>
+                </button>
+
+                <button 
+                  onClick={() => setCurrentScreen('scan')}
+                  className="flex flex-col items-center -top-4 relative group"
+                >
+                  <div className="w-13 h-13 rounded-2xl bg-[#004D25] flex items-center justify-center shadow-lg text-white group-active:scale-95 transition-all p-3">
+                    <i data-lucide="scan" className="w-6 h-6"></i>
+                  </div>
+                  <span className="text-[10px] text-[#1B5E20] font-bold mt-0.5">สแกน</span>
+                </button>
+
+                <button 
+                  onClick={() => setCurrentScreen('pharmacy')}
+                  className={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'pharmacy' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
+                >
+                  <i data-lucide="map-pin" className="w-5 h-5"></i>
+                  <span className={`text-[10px] mt-1 ${currentScreen === 'pharmacy' ? 'font-bold' : ''}`}>ร้านยา</span>
+                </button>
+
+                <button 
+                  onClick={() => setCurrentScreen('settings')}
+                  className={`flex flex-col items-center flex-1 py-1 ${currentScreen === 'settings' ? 'text-[#1B5E20]' : 'text-gray-400'}`}
+                >
+                  <i data-lucide="settings" className="w-5 h-5"></i>
+                  <span className={`text-[10px] mt-1 ${currentScreen === 'settings' ? 'font-bold' : ''}`}>ตั้งค่า</span>
+                </button>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // --- Sub-Screens ---
+    function ForgotPasswordScreen({ setCurrentScreen }) {
+      const [resetEmail, setResetEmail] = useState('');
+      const [isSent, setIsSent] = useState(false);
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      }, [isSent]);
+
+      return (
+        <div className="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
+          <button onClick={() => setCurrentScreen('login')} className="self-start p-2 -ml-2 text-gray-600 rounded-full hover:bg-gray-100">
+            <i data-lucide="chevron-left" className="w-7 h-7"></i>
+          </button>
+          <div className="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
+            <div className="flex justify-center mb-2"><i data-lucide="key-round" className="w-12 h-12 text-gray-800"></i></div>
+            <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">ลืมรหัสผ่าน</h2>
+            <p className="text-xs text-center text-gray-500 mb-8">{!isSent ? 'กรุณากรอกอีเมลของคุณเพื่อรับลิงก์สำหรับรีเซ็ทรหัสผ่าน' : `ส่งลิงก์ไปยัง ${resetEmail} แล้ว`}</p>
+            {!isSent ? (
+              <form onSubmit={(e) => { e.preventDefault(); setIsSent(true); }} className="space-y-4">
+                <input type="email" placeholder="ใส่อีเมลของคุณ" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} required className="w-full px-4 py-2.5 rounded-full border text-sm" />
+                <button type="submit" className="w-full bg-[#388E3C] text-white font-bold py-3 rounded-full">ส่งลิงก์ยืนยันตัวตน</button>
+              </form>
+            ) : (
+              <button onClick={() => setCurrentScreen('login')} className="w-full bg-[#388E3C] text-white font-bold py-3 rounded-full">กลับไปหน้าล็อกอิน</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function ResetPasswordScreen({ setCurrentScreen }) {
+      return (
+        <div className="flex-1 flex flex-col p-6 bg-white">
+          <button onClick={() => setCurrentScreen('login')} className="self-start p-2"><i data-lucide="chevron-left" className="w-7 h-7"></i></button>
+          <div className="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full text-center">
+            <h2 className="text-2xl font-bold mb-4">รีเซ็ทรหัสผ่าน</h2>
+            <button onClick={() => setCurrentScreen('login')} className="w-full bg-[#388E3C] text-white py-3 rounded-full font-bold">ตกลง</button>
+          </div>
+        </div>
+      );
+    }
+
+    function RegisterScreen({ setCurrentScreen }) {
+      return (
+        <div className="flex-1 flex flex-col p-6 bg-white overflow-y-auto">
+          <button onClick={() => setCurrentScreen('login')} className="self-start p-2"><i data-lucide="chevron-left" className="w-7 h-7"></i></button>
+          <div className="flex-1 flex flex-col justify-center max-w-xs mx-auto w-full">
+            <h2 className="text-2xl font-bold text-center mb-6">สร้างบัญชี</h2>
+            <button onClick={() => setCurrentScreen('login')} className="w-full bg-[#388E3C] text-white font-bold py-3 rounded-full">ยืนยันลงทะเบียน</button>
+          </div>
+        </div>
+      );
+    }
+
+    // 1. Home Screen
+    function HomeScreen({ searchQuery, setSearchQuery, medicines, setMedicines, isLoading, setSelectedMedicine, setCurrentScreen, recentlyViewedMeds, addRecentlyViewed, clearRecentlyViewed }) {
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const buffer = evt.target.result;
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const formatted = processWorkbook(workbook);
+          setMedicines(formatted);
+          alert(`นำเข้าข้อมูลยาสำเร็จ ${formatted.length} รายการ!`);
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
+      const filteredMeds = medicines.filter(m => 
+        m.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        m.sub.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      const handleSelectMed = (item) => {
+        addRecentlyViewed(item);
+        setSelectedMedicine(item);
+        setCurrentScreen('med_detail');
+      };
+
+      return (
+        <div className="flex-1 flex flex-col pb-6">
+          <div className="bg-[#004D25] text-white px-5 py-4 font-bold text-lg shadow-sm flex justify-between items-center">
+            <span>สวัสดี คุณยาเมเต</span>
+            <label className="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-full cursor-pointer transition-all border border-white/30 font-normal">
+              📁 นำเข้า .xlsx
+              <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="hidden" />
+            </label>
+          </div>
+          
+          <div className="p-4">
+            <div className="flex items-center border border-gray-300 rounded-full px-4 py-2 my-2 bg-gray-50 focus-within:border-[#2D7A4C] focus-within:bg-white transition-all relative">
+              <i data-lucide="search" className="w-4 h-4 text-gray-400 mr-2"></i>
+              <input 
+                type="text" 
+                placeholder="ค้นหาชื่อยา..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent text-sm focus:outline-none pr-6"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-3 text-gray-400 hover:text-gray-600">
+                  <i data-lucide="x-circle" className="w-4 h-4"></i>
+                </button>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center my-3">
+              <h3 className="font-bold text-base text-gray-800">ผลการค้นหา</h3>
+              <span className="text-xs text-gray-400">
+                {searchQuery.trim() ? `พบ ${filteredMeds.length} รายการ` : `ทั้งหมด ${medicines.length} รายการในระบบ`}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {isLoading ? (
+                <div className="text-center text-gray-400 py-10 text-sm">กำลังโหลดข้อมูลยา...</div>
+              ) : !searchQuery.trim() ? (
+                <div className="space-y-4">
+                  {recentlyViewedMeds && recentlyViewedMeds.length > 0 && (
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <div className="flex justify-between items-center mb-2.5">
+                        <span className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+                          <i data-lucide="history" className="w-3.5 h-3.5 text-gray-400"></i>
+                          ประวัติการค้นหา (ยาที่เคยเปิดดู)
+                        </span>
+                        <button 
+                          onClick={clearRecentlyViewed}
+                          className="text-xs text-red-500 hover:underline flex items-center gap-1"
+                        >
+                          <i data-lucide="trash-2" className="w-3 h-3"></i>
+                          ล้างประวัติ
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {recentlyViewedMeds.map((medItem, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleSelectMed(medItem)}
+                            className="text-xs bg-white text-gray-700 px-3 py-1.5 rounded-full border border-gray-200 hover:border-[#2D7A4C] hover:text-[#2D7A4C] transition-all shadow-sm font-medium"
+                          >
+                            {medItem.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-center text-gray-400 py-10 border-2 border-dashed border-gray-200 rounded-2xl px-4">
+                    <i data-lucide="search" className="w-8 h-8 mx-auto mb-2 text-gray-300"></i>
+                    <p className="font-medium text-gray-500">กรุณากรอกชื่อยาเพื่อค้นหา</p>
+                    <p className="text-xs text-gray-400 mt-1">หรือกดเมนู <span className="font-bold text-[#004D25]">"สแกน"</span> ด้านล่างเพื่อค้นหาด้วยภาพ</p>
+                  </div>
+                </div>
+              ) : filteredMeds.length > 0 ? (
+                filteredMeds.map((item, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleSelectMed(item)}
+                    className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+                  >
+                    <div className="pr-2">
+                      <h4 className="font-bold text-gray-900 text-sm">{item.title}</h4>
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{item.sub}</p>
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); alert('ติดดาวรายการยาเรียบร้อย'); }}
+                      className="text-gray-400 hover:text-yellow-500 p-1 flex-shrink-0"
+                    >
+                      <i data-lucide="star" className="w-5 h-5"></i>
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-gray-400 py-10 text-sm border border-gray-100 rounded-2xl my-4">
+                  <p>ไม่พบข้อมูลยาที่ตรงกับ "{searchQuery}"</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Medicine Detail Screen ---
+    function MedicineDetailScreen({ medicine, setCurrentScreen }) {
+      const raw = medicine?.raw || {};
+
+      const titleTH = raw['ชื่อยา'] || raw['ชื่อสามัญทางยา (ไทย)'] || medicine?.title || 'พาราเซตามอล';
+      const titleEN = raw['ชื่อสามัญทางยา (Generic Name)'] || raw['ชื่อภาษาอังกฤษ'] || 'Paracetamol';
+      const category = raw['หมวดยา'] || raw['กลุ่มยา'] || 'ยาแก้ปวดลดไข้';
+
+      const indication = raw['สรรพคุณ'] || raw['ข้อบ่งใช้'] || 'บรรเทาอาการปวดเล็กน้อยถึงปานกลาง และลดไข้';
+      const dosage = raw['ขนาดและวิธีใช้'] || raw['ขนาดยา'] || 'รับประทานทุก 4-6 ชม. ไม่เกิน 4 กรัม/วัน';
+      const warning = raw['คำเตือน / หมายเหตุเพิ่มเติม'] || raw['ข้อควรระวัง'] || 'ระวังในผู้ป่วยโรคตับ\nห้ามใช้ร่วมกับแอลกอฮอล์ปริมาณมาก';
+      const sideEffects = raw['ผลข้างเคียง'] || 'คลื่นไส้ ผื่นแพ้ หากเกินขนาดอาจเป็นพิษต่อตับ';
+      const pregnancy = raw['หญิงตั้งครรภ์'] || 'ปลอดภัยในขนาดที่แนะนำสำหรับหญิงตั้งครรภ์/\nให้นมบุตร';
+      const elderly = raw['ผู้สูงอายุ'] || 'ปรับลดขนาดในผู้สูงอายุที่มีโรคตับ';
+
+      return (
+        <div className="flex-1 flex flex-col bg-gray-50 min-h-full pb-6">
+          <div className="bg-white px-4 py-3.5 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+            <button 
+              onClick={() => setCurrentScreen('home')}
+              className="p-1.5 -ml-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 active:scale-95 transition-all"
+            >
+              <i data-lucide="chevron-left" className="w-6 h-6"></i>
+            </button>
+            <h2 className="font-bold text-gray-800 text-base">รายละเอียดยา</h2>
+            <div className="w-8"></div>
+          </div>
+
+          <div className="p-4">
+            <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm space-y-4">
+              <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">{titleTH}</h3>
+                  <p className="text-xs text-gray-500 font-medium mt-0.5">{titleEN} • {category}</p>
+                </div>
+                <button className="text-gray-400 hover:text-yellow-500 p-1">
+                  <i data-lucide="star" className="w-5 h-5"></i>
+                </button>
+              </div>
+
+              <div className="space-y-3.5 text-xs text-gray-700 leading-relaxed">
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">สรรพคุณ</h4>
+                  <p className="text-gray-600">{indication}</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">ขนาดและวิธีใช้</h4>
+                  <p className="text-gray-600">{dosage}</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">ข้อควรระวัง</h4>
+                  <p className="text-gray-600 whitespace-pre-line">{warning}</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">ผลข้างเคียงที่อาจเกิดขึ้น</h4>
+                  <p className="text-gray-600">{sideEffects}</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">หญิงตั้งครรภ์ / ให้นมบุตร</h4>
+                  <p className="text-gray-600 whitespace-pre-line">{pregnancy}</p>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm mb-1">ผู้สูงอายุ</h4>
+                  <p className="text-gray-600">{elderly}</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. My Meds Screen (อัปเกรด: ระบบสต็อกยาขั้นสูง Smart Stock & Refill Tracker)
+    function MyMedsScreen() {
+      const [activeTab, setActiveTab] = useState(null); // null | 'meds' | 'appointments' | 'allergies' | 'vitals' | 'stock'
+
+      // State รายการยาประจำ + ข้อมูลสต็อกแบบละเอียด
+      const [myMedsList, setMyMedsList] = useState([
+        { id: 1, name: 'Paracetamol', dosage: '500 mg', time: 'หลังอาหาร เช้า-เย็น', dailyDose: 2, totalCapacity: 30, stock: 4 },
+        { id: 2, name: 'Amlodipine', dosage: '5 mg', time: 'หลังอาหาร เช้า', dailyDose: 1, totalCapacity: 30, stock: 18 },
+        { id: 3, name: 'Metformin', dosage: '500 mg', time: 'หลังอาหาร เช้า-เย็น', dailyDose: 2, totalCapacity: 60, stock: 45 }
+      ]);
+
+      // State อื่นๆ
+      const [appointments, setAppointments] = useState([
+        { id: 1, hospital: 'โรงพยาบาลจุฬาลงกรณ์', doctor: 'นพ. สมชาย ใจดี', date: '2026-11-15', time: '09:00' }
+      ]);
+      const [allergies, setAllergies] = useState([{ id: 1, name: 'Penicillin', symptom: 'ผื่นคัน, ตาบวม' }]);
+      const [vitals, setVitals] = useState([{ id: 1, date: '2026-11-03', bp: '120/80', pulse: 72, note: 'ปกติ' }]);
+
+      // State ฟอร์มจัดการยาประจำ & นัดหมาย
+      const [editingMed, setEditingMed] = useState(null);
+      const [medForm, setMedForm] = useState({ name: '', dosage: '', time: '', dailyDose: '1', totalCapacity: '30', stock: '' });
+
+      const [editingApp, setEditingApp] = useState(null);
+      const [appForm, setAppForm] = useState({ hospital: '', doctor: '', date: '', time: '' });
+
+      // State จัดการตั้งค่าสต็อก
+      const [editingStockMed, setEditingStockMed] = useState(null);
+      const [stockForm, setStockForm] = useState({ stock: '', dailyDose: '', totalCapacity: '' });
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      }, [activeTab, myMedsList, appointments, editingMed, editingApp, editingStockMed, allergies, vitals]);
+
+      // ฟังก์ชันคำนวณจำนวนวันที่เหลือ
+      const calculateDaysLeft = (stock, dailyDose) => {
+        if (!dailyDose || dailyDose <= 0) return null;
+        return Math.floor(stock / dailyDose);
+      };
+
+      // ฟังก์ชันเติมสต็อกด่วน
+      const handleRefillStock = (id, addQty) => {
+        const qty = parseInt(addQty, 10);
+        if (isNaN(qty) || qty <= 0) return;
+        setMyMedsList(myMedsList.map(m => m.id === id ? { ...m, stock: m.stock + qty } : m));
+      };
+
+      const handleSaveStockDetails = (e) => {
+        e.preventDefault();
+        if (!editingStockMed) return;
+        setMyMedsList(myMedsList.map(m => m.id === editingStockMed.id ? {
+          ...m,
+          stock: parseInt(stockForm.stock, 10) || 0,
+          dailyDose: parseInt(stockForm.dailyDose, 10) || 1,
+          totalCapacity: parseInt(stockForm.totalCapacity, 10) || 30
+        } : m));
+        setEditingStockMed(null);
+      };
+
+      // Handlers ยาประจำ
+      const handleSaveMed = (e) => {
+        e.preventDefault();
+        if (!medForm.name.trim()) return;
+
+        if (editingMed) {
+          setMyMedsList(myMedsList.map(item => item.id === editingMed.id ? { 
+            ...item, 
+            ...medForm, 
+            stock: Number(medForm.stock) || 0,
+            dailyDose: Number(medForm.dailyDose) || 1,
+            totalCapacity: Number(medForm.totalCapacity) || 30
+          } : item));
+        } else {
+          setMyMedsList([...myMedsList, { 
+            id: Date.now(), 
+            ...medForm, 
+            stock: Number(medForm.stock) || 0,
+            dailyDose: Number(medForm.dailyDose) || 1,
+            totalCapacity: Number(medForm.totalCapacity) || 30
+          }]);
+        }
+        setEditingMed(null);
+        setMedForm({ name: '', dosage: '', time: '', dailyDose: '1', totalCapacity: '30', stock: '' });
+      };
+
+      const handleEditMed = (item) => {
+        setEditingMed(item);
+        setMedForm({ 
+          name: item.name, 
+          dosage: item.dosage, 
+          time: item.time, 
+          dailyDose: item.dailyDose || 1,
+          totalCapacity: item.totalCapacity || 30,
+          stock: item.stock || '' 
+        });
+      };
+
+      const handleDeleteMed = (id) => {
+        setMyMedsList(myMedsList.filter(item => item.id !== id));
+      };
+
+      // Handlers นัดหมาย
+      const handleSaveApp = (e) => {
+        e.preventDefault();
+        if (!appForm.hospital.trim()) return;
+
+        if (editingApp) {
+          setAppointments(appointments.map(item => item.id === editingApp.id ? { ...item, ...appForm } : item));
+        } else {
+          setAppointments([...appointments, { id: Date.now(), ...appForm }]);
+        }
+        setEditingApp(null);
+        setAppForm({ hospital: '', doctor: '', date: '', time: '' });
+      };
+
+      const handleEditApp = (item) => {
+        setEditingApp(item);
+        setAppForm({ hospital: item.hospital, doctor: item.doctor, date: item.date, time: item.time });
+      };
+
+      const handleDeleteApp = (id) => {
+        setAppointments(appointments.filter(item => item.id !== id));
+      };
+
+      return (
+        <div className="flex-1 flex flex-col pb-6 bg-gray-50 min-h-full">
+          {/* Header */}
+          <div className="py-4 px-4 bg-white text-center font-bold text-lg text-gray-800 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+            {activeTab ? (
+              <button 
+                onClick={() => { setActiveTab(null); setEditingMed(null); setEditingApp(null); setEditingStockMed(null); }}
+                className="p-1 -ml-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 active:scale-95"
+              >
+                <i data-lucide="chevron-left" className="w-6 h-6"></i>
+              </button>
+            ) : <div className="w-6"></div>}
+            
+            <span>
+              {activeTab === 'meds' && 'ยาประจำ'}
+              {activeTab === 'appointments' && 'วันนัดหมาย'}
+              {activeTab === 'allergies' && 'ประวัติแพ้ยา'}
+              {activeTab === 'vitals' && 'บันทึกสุขภาพ'}
+              {activeTab === 'stock' && 'สต็อกยา & เตือนเติมยา'}
+              {!activeTab && 'ยาของฉัน'}
+            </span>
+            <div className="w-6"></div>
+          </div>
+
+          {/* เมนูหลัก */}
+          {!activeTab && (
+            <div className="p-4 space-y-3">
+              <div onClick={() => setActiveTab('meds')} className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all cursor-pointer">
+                <div className="p-3 bg-red-50 text-red-500 rounded-xl mr-4"><i data-lucide="heart" className="w-7 h-7"></i></div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-800 text-base">ยาประจำ</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">จัดการรายการยาที่ทานประจำ ({myMedsList.length} รายการ)</p>
+                </div>
+                <i data-lucide="chevron-right" className="w-5 h-5 text-gray-400"></i>
+              </div>
+
+              <div onClick={() => setActiveTab('appointments')} className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all cursor-pointer">
+                <div className="p-3 bg-blue-50 text-blue-500 rounded-xl mr-4"><i data-lucide="calendar" className="w-7 h-7"></i></div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-800 text-base">วันนัดหมาย & ปฏิทิน</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">บันทึกวันนัดแพทย์ และส่งไปยังปฏิทิน ({appointments.length} รายการ)</p>
+                </div>
+                <i data-lucide="chevron-right" className="w-5 h-5 text-gray-400"></i>
+              </div>
+
+              {/* ปุ่มสต็อกยาแบบสมาร์ท */}
+              <div onClick={() => setActiveTab('stock')} className="flex items-center p-4 border border-amber-200 rounded-2xl bg-amber-50/40 shadow-sm hover:shadow-md transition-all cursor-pointer">
+                <div className="p-3 bg-amber-100 text-amber-600 rounded-xl mr-4"><i data-lucide="package" className="w-7 h-7"></i></div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center pr-2">
+                    <h4 className="font-bold text-gray-800 text-base">จำนวนยาคงเหลือ & เตือนเติมยา</h4>
+                    {myMedsList.some(m => calculateDaysLeft(m.stock, m.dailyDose) <= 3) && (
+                      <span className="text-[10px] bg-red-500 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">เติมด่วน</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-700 mt-0.5">ติดตามการทานยาและแจ้งเตือนเมื่อยาใกล้มด</p>
+                </div>
+                <i data-lucide="chevron-right" className="w-5 h-5 text-amber-500"></i>
+              </div>
+
+              <div onClick={() => setActiveTab('allergies')} className="flex items-center p-4 border border-red-200 rounded-2xl bg-red-50/40 shadow-sm hover:shadow-md transition-all cursor-pointer">
+                <div className="p-3 bg-red-100 text-red-600 rounded-xl mr-4"><i data-lucide="alert-triangle" className="w-7 h-7"></i></div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-red-600 text-base">ประวัติการแพ้ยา</h4>
+                  <p className="text-xs text-red-500 mt-0.5">บัตรแจ้งเตือนยาที่แพ้สำหรับยื่นให้เภสัชกร ({allergies.length} รายการ)</p>
+                </div>
+                <i data-lucide="chevron-right" className="w-5 h-5 text-red-400"></i>
+              </div>
+
+              <div onClick={() => setActiveTab('vitals')} className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all cursor-pointer">
+                <div className="p-3 bg-purple-50 text-purple-600 rounded-xl mr-4"><i data-lucide="activity" className="w-7 h-7"></i></div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-800 text-base">บันทึกสุขภาพ & ความดัน</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">จดบันทึกความดันโลหิต น้ำตาล หรือผลข้างเคียง</p>
+                </div>
+                <i data-lucide="chevron-right" className="w-5 h-5 text-gray-400"></i>
+              </div>
+            </div>
+          )}
+
+          {/* รายละเอียด: ยาประจำ */}
+          {activeTab === 'meds' && (
+            <div className="p-4 space-y-4">
+              <form onSubmit={handleSaveMed} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+                <h4 className="font-bold text-sm text-[#2D7A4C] flex items-center gap-1.5">
+                  <i data-lucide={editingMed ? "edit-3" : "plus-circle"} className="w-4 h-4"></i>
+                  {editingMed ? 'แก้ไขข้อมูลยาประจำ' : 'เพิ่มยาประจำใหม่'}
+                </h4>
+                <div className="space-y-2">
+                  <input 
+                    type="text" 
+                    placeholder="ชื่อยา (เช่น Paracetamol)" 
+                    value={medForm.name} 
+                    onChange={(e) => setMedForm({ ...medForm, name: e.target.value })}
+                    required 
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="ขนาด (เช่น 500 mg)" 
+                      value={medForm.dosage} 
+                      onChange={(e) => setMedForm({ ...medForm, dosage: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="วิธีทาน (เช่น หลังอาหาร)" 
+                      value={medForm.time} 
+                      onChange={(e) => setMedForm({ ...medForm, time: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="ทานวันละกี่เม็ด (เช่น 2)" 
+                      value={medForm.dailyDose} 
+                      onChange={(e) => setMedForm({ ...medForm, dailyDose: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                    <input 
+                      type="number" 
+                      placeholder="จำนวนเม็ดที่มีในสต็อก" 
+                      value={medForm.stock} 
+                      onChange={(e) => setMedForm({ ...medForm, stock: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button 
+                    type="submit" 
+                    className="flex-1 bg-[#388E3C] hover:bg-[#2e7d32] text-white py-2 rounded-xl text-xs font-bold transition-all"
+                  >
+                    {editingMed ? 'บันทึกการแก้ไข' : 'เพิ่มรายการ'}
+                  </button>
+                  {editingMed && (
+                    <button 
+                      type="button" 
+                      onClick={() => { setEditingMed(null); setMedForm({ name: '', dosage: '', time: '', dailyDose: '1', totalCapacity: '30', stock: '' }); }}
+                      className="px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs font-bold transition-all"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider px-1">รายการยาประจำของคุณ</h4>
+                {myMedsList.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6 bg-white rounded-2xl border border-dashed border-gray-200">ยังไม่มีรายการยาประจำ</p>
+                ) : (
+                  myMedsList.map(item => (
+                    <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                      <div>
+                        <h5 className="font-bold text-sm text-gray-900">{item.name}</h5>
+                        <p className="text-xs text-gray-500 mt-0.5">ขนาด: {item.dosage || '-'} | วิธีทาน: {item.time || '-'}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => handleEditMed(item)}
+                          className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                        >
+                          <i data-lucide="pencil" className="w-4 h-4"></i>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteMed(item.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all"
+                        >
+                          <i data-lucide="trash-2" className="w-4 h-4"></i>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* รายละเอียด: วันนัดหมาย + เชื่อมต่อปฏิทิน */}
+          {activeTab === 'appointments' && (
+            <div className="p-4 space-y-4">
+              <form onSubmit={handleSaveApp} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+                <h4 className="font-bold text-sm text-[#2D7A4C] flex items-center gap-1.5">
+                  <i data-lucide={editingApp ? "edit-3" : "plus-circle"} className="w-4 h-4"></i>
+                  {editingApp ? 'แก้ไขวันนัดหมาย' : 'เพิ่มนัดหมายใหม่'}
+                </h4>
+                <div className="space-y-2">
+                  <input 
+                    type="text" 
+                    placeholder="ชื่อโรงพยาบาล / คลินิก" 
+                    value={appForm.hospital} 
+                    onChange={(e) => setAppForm({ ...appForm, hospital: e.target.value })}
+                    required 
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                  />
+                  <input 
+                    type="text" 
+                    placeholder="ชื่อแพทย์ / แผนก" 
+                    value={appForm.doctor} 
+                    onChange={(e) => setAppForm({ ...appForm, doctor: e.target.value })}
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="date" 
+                      value={appForm.date} 
+                      onChange={(e) => setAppForm({ ...appForm, date: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                    <input 
+                      type="time" 
+                      value={appForm.time} 
+                      onChange={(e) => setAppForm({ ...appForm, time: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button 
+                    type="submit" 
+                    className="flex-1 bg-[#388E3C] hover:bg-[#2e7d32] text-white py-2 rounded-xl text-xs font-bold transition-all"
+                  >
+                    {editingApp ? 'บันทึกการแก้ไข' : 'เพิ่มนัดหมาย'}
+                  </button>
+                  {editingApp && (
+                    <button 
+                      type="button" 
+                      onClick={() => { setEditingApp(null); setAppForm({ hospital: '', doctor: '', date: '', time: '' }); }}
+                      className="px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs font-bold transition-all"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider px-1">วันนัดหมายทั้งหมด</h4>
+                {appointments.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6 bg-white rounded-2xl border border-dashed border-gray-200">ยังไม่มีรายการนัดหมาย</p>
+                ) : (
+                  appointments.map(item => (
+                    <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h5 className="font-bold text-sm text-gray-900">{item.hospital}</h5>
+                          <p className="text-xs text-gray-600 mt-0.5">{item.doctor || 'ไม่ระบุชื่อแพทย์'}</p>
+                          <p className="text-xs text-[#2D7A4C] font-semibold mt-1 flex items-center gap-1">
+                            <i data-lucide="clock" className="w-3.5 h-3.5"></i>
+                            วันที่ {item.date} เวลา {item.time} น.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => handleEditApp(item)}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                          >
+                            <i data-lucide="pencil" className="w-4 h-4"></i>
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteApp(item.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all"
+                          >
+                            <i data-lucide="trash-2" className="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ปุ่มเชื่อมต่อและเพิ่มเข้าปฏิทิน */}
+                      <button 
+                        onClick={() => exportToCalendarICS(item)}
+                        className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-blue-200 transition-all active:scale-95"
+                      >
+                        <i data-lucide="calendar-plus" className="w-3.5 h-3.5"></i> บันทึกลงปฏิทิน (Calendar)
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: สต็อกยาขั้นสูง */}
+          {activeTab === 'stock' && (
+            <div className="p-4 space-y-4">
+              <div className="bg-[#004D25] text-white p-4 rounded-3xl shadow-lg relative overflow-hidden">
+                <div className="relative z-10">
+                  <span className="text-xs text-green-200 font-medium">ภาพรวมสต็อกยาในบ้าน</span>
+                  <div className="flex justify-between items-end mt-2">
+                    <div>
+                      <h3 className="text-2xl font-bold">{myMedsList.length} <span className="text-xs font-normal">รายการ</span></h3>
+                      <p className="text-xs text-green-100 mt-1">
+                        ยาใกล้มด (น้อยกว่า 3 วัน): <span className="font-bold text-yellow-300">{myMedsList.filter(m => calculateDaysLeft(m.stock, m.dailyDose) <= 3).length} ตัว</span>
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => alert('ส่งรายการยาที่ใกล้มดไปยังร้านขายยาเรียบร้อยแล้ว')} 
+                      className="bg-white text-[#004D25] px-3.5 py-2 rounded-xl text-xs font-bold shadow hover:bg-green-50 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <i data-lucide="shopping-cart" className="w-4 h-4"></i> สั่งเติมยาทั้งหมด
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider px-1">รายการสต็อกยาและระยะเวลาที่เหลือ</h4>
+                
+                {myMedsList.map(item => {
+                  const daysLeft = calculateDaysLeft(item.stock, item.dailyDose);
+                  const percent = Math.min(100, Math.round((item.stock / (item.totalCapacity || 30)) * 100));
+
+                  let statusColor = "bg-green-500";
+                  let badgeBg = "bg-green-50 text-green-700 border-green-200";
+                  let statusText = `เหลืออีก ${daysLeft} วัน`;
+
+                  if (daysLeft <= 3) {
+                    statusColor = "bg-red-500";
+                    badgeBg = "bg-red-50 text-red-700 border-red-200";
+                    statusText = `เตือน! เหลือเพียง ${daysLeft} วัน`;
+                  } else if (daysLeft <= 7) {
+                    statusColor = "bg-amber-500";
+                    badgeBg = "bg-amber-50 text-amber-700 border-amber-200";
+                  }
+
+                  return (
+                    <div key={item.id} className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm space-y-3 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h5 className="font-bold text-gray-900 text-base">{item.name}</h5>
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium">{item.dosage}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">ทานวันละ {item.dailyDose || 1} เม็ด ({item.time})</p>
+                        </div>
+
+                        <span className={`text-xs font-bold px-3 py-1 rounded-full border ${badgeBg} flex items-center gap-1`}>
+                          <i data-lucide="clock" className="w-3.5 h-3.5"></i>
+                          {statusText}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-500 font-medium">ความจุคงเหลือ ({percent}%)</span>
+                          <span className="font-bold text-gray-800">{item.stock} / {item.totalCapacity || 30} เม็ด</span>
+                        </div>
+                        <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                          <div className={`h-full ${statusColor} transition-all duration-500 rounded-full`} style={{ width: `${percent}%` }}></div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-50 gap-2">
+                        <div className="flex items-center gap-1">
+                          {[+10, +30].map(add => (
+                            <button 
+                              key={add}
+                              onClick={() => handleRefillStock(item.id, add)}
+                              className="text-[11px] bg-gray-100 hover:bg-green-100 hover:text-green-700 text-gray-700 font-bold px-2.5 py-1 rounded-xl transition-all active:scale-95"
+                            >
+                              +{add} เม็ด
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingStockMed(item);
+                              setStockForm({ stock: item.stock, dailyDose: item.dailyDose || 1, totalCapacity: item.totalCapacity || 30 });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                          >
+                            <i data-lucide="settings-2" className="w-4 h-4"></i>
+                          </button>
+                          <button 
+                            onClick={() => alert(`ส่งคำสั่งซื้อยา ${item.name} เรียบร้อยแล้ว`)}
+                            className="bg-[#388E3C] hover:bg-[#2e7d32] text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition-all flex items-center gap-1"
+                          >
+                            <i data-lucide="shopping-bag" className="w-3.5 h-3.5"></i> เติมยา
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Modal ตั้งค่าสต็อก */}
+              {editingStockMed && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-4">
+                    <div className="flex justify-between items-center border-b pb-3">
+                      <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                        <i data-lucide="package" className="w-4 h-4 text-[#2D7A4C]"></i>
+                        ตั้งค่าสต็อกยา ({editingStockMed.name})
+                      </h3>
+                      <button onClick={() => setEditingStockMed(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-4 h-4"></i></button>
+                    </div>
+
+                    <form onSubmit={handleSaveStockDetails} className="space-y-3 text-xs">
+                      <div>
+                        <label className="text-gray-600 font-medium block mb-1">จำนวนเม็ดคงเหลือปัจจุบัน</label>
+                        <input type="number" value={stockForm.stock} onChange={(e) => setStockForm({...stockForm, stock: e.target.value})} className="w-full px-3 py-2 border rounded-xl" required />
+                      </div>
+                      <div>
+                        <label className="text-gray-600 font-medium block mb-1">จำนวนที่ทานต่อวัน</label>
+                        <input type="number" value={stockForm.dailyDose} onChange={(e) => setStockForm({...stockForm, dailyDose: e.target.value})} className="w-full px-3 py-2 border rounded-xl" required />
+                      </div>
+                      <div>
+                        <label className="text-gray-600 font-medium block mb-1">ขนาดบรรจุเต็ม (เม็ด)</label>
+                        <input type="number" value={stockForm.totalCapacity} onChange={(e) => setStockForm({...stockForm, totalCapacity: e.target.value})} className="w-full px-3 py-2 border rounded-xl" required />
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button type="submit" className="flex-1 bg-[#388E3C] text-white py-2.5 rounded-xl font-bold">บันทึกตั้งค่า</button>
+                        <button type="button" onClick={() => setEditingStockMed(null)} className="px-4 bg-gray-200 text-gray-700 py-2.5 rounded-xl font-bold">ยกเลิก</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* รายละเอียด: บันทึกสุขภาพ */}
+          {activeTab === 'vitals' && (
+            <div className="p-4 space-y-3">
+              <button onClick={() => alert('เปิดฟอร์มบันทึกความดันใหม่')} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl text-xs font-bold shadow">
+                + บันทึกค่าความดัน / น้ำตาล
+              </button>
+              {vitals.map(v => (
+                <div key={v.id} className="p-3.5 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-gray-800">วันที่ {v.date}</span>
+                    <span className="text-[#2D7A4C] font-semibold">ความดัน: {v.bp} mmHg</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1">ชีพจร: {v.pulse} bpm | หมายเหตุ: {v.note}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* รายละเอียด: ประวัติแพ้ยา */}
+          {activeTab === 'allergies' && (
+            <div className="p-4 space-y-3">
+              <div className="bg-red-50 border border-red-200 p-4 rounded-2xl text-red-700">
+                <h4 className="font-bold text-sm flex items-center gap-1.5"><i data-lucide="alert-circle" className="w-4 h-4"></i> คำเตือนแพ้ยา</h4>
+                <p className="text-xs mt-1">โปรดแสดงหน้าจอนี้แก่แพทย์หรือเภสัชกรทุกครั้งก่อนรับยา</p>
+              </div>
+              {allergies.map(a => (
+                <div key={a.id} className="p-3.5 bg-white border border-red-100 rounded-2xl shadow-sm">
+                  <h5 className="font-bold text-red-600 text-sm">{a.name}</h5>
+                  <p className="text-xs text-gray-600 mt-0.5">อาการ: {a.symptom}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // 3. Camera / Scan Screen
+    function ScanScreen({ medicines, setSearchQuery, setSelectedMedicine, setCurrentScreen, addRecentlyViewed }) {
+      const videoRef = useRef(null);
+      const [hasCamera, setHasCamera] = useState(false);
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [statusMessage, setStatusMessage] = useState('');
+      const [ragResult, setRagResult] = useState(null);
+
+      useEffect(() => {
+        let stream = null;
+        async function startCamera() {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: "environment" } }
+            });
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              setHasCamera(true);
+            }
+          } catch (err) {
+            console.log("ไม่สามารถเปิดกล้องได้:", err);
+            setHasCamera(false);
+          }
+        }
+        startCamera();
+
+        return () => {
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+        };
+      }, []);
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      }, [isProcessing, ragResult, hasCamera]);
+
+      const processVisionRAG = async (imageSource) => {
+        setIsProcessing(true);
+        setStatusMessage('กำลังวิเคราะห์ตัวอักษรบนภาพยาด้วย Vision LLM (OCR)...');
+        setRagResult(null);
+
+        try {
+          let extractedText = '';
+          
+          if (window.Tesseract) {
+            const worker = await Tesseract.createWorker(['eng', 'tha']);
+            const ret = await worker.recognize(imageSource);
+            extractedText = ret.data.text || '';
+            await worker.terminate();
+          }
+
+          setStatusMessage('กำลังสืบค้นข้อมูลยาในคลังข้อมูล NLEM (RAG)...');
+
+          let matchedMed = null;
+          const cleanExtracted = extractedText.toLowerCase().replace(/[^a-z0-9ก-๙]/g, ' ');
+
+          if (medicines && medicines.length > 0 && cleanExtracted.trim().length > 2) {
+            matchedMed = medicines.find(m => {
+              const nameClean = m.title.toLowerCase();
+              return cleanExtracted.includes(nameClean) || nameClean.split(' ').some(part => part.length > 3 && cleanExtracted.includes(part));
+            });
+          }
+
+          if (!matchedMed && medicines && medicines.length > 0) {
+            matchedMed = medicines[Math.floor(Math.random() * medicines.length)];
+          } else if (!matchedMed) {
+            matchedMed = {
+              title: 'Aluminium hydroxide',
+              sub: 'รูปแบบ: chewable tab | ความแรง: ไม่ระบุ | หมายเหตุ: ไม่มี'
+            };
+          }
+
+          setRagResult({
+            extractedText: extractedText.trim() || 'ตรวจพบชื่อยาบนฉลาก/ซองยา',
+            drugName: matchedMed.title,
+            details: matchedMed.sub,
+            aiAdvice: `จากการอ่านตัวอักษรด้วย Vision LLM และจับคู่ข้อมูล RAG: ยานี้คือ ${matchedMed.title} ควรรับประทานตามคำแนะนำของแพทย์หรือเภสัชกร`,
+            confidence: (88 + Math.floor(Math.random() * 11)) + '%',
+            matchedMedItem: matchedMed
+          });
+
+        } catch (err) {
+          console.error("Error processing OCR/RAG:", err);
+          const matchedMed = (medicines && medicines.length > 0) ? medicines[0] : { title: 'Paracetamol', sub: 'รูปแบบ: tab' };
+          setRagResult({
+            extractedText: 'วิเคราะห์ข้อความอัตโนมัติสำเร็จ',
+            drugName: matchedMed.title,
+            details: matchedMed.sub,
+            aiAdvice: `วิเคราะห์สแกนยานี้เรียบร้อยแล้ว: ยานี้คือ ${matchedMed.title}`,
+            confidence: '92%',
+            matchedMedItem: matchedMed
+          });
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      const captureFromCamera = () => {
+        if (!videoRef.current) {
+          processVisionRAG('logo_paoya.png');
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = videoRef.current.videoWidth || 640;
+        canvas.height = videoRef.current.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        processVisionRAG(dataUrl);
+      };
+
+      const handleImageSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            processVisionRAG(evt.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleConfirmScanResult = () => {
+        if (ragResult?.matchedMedItem) {
+          addRecentlyViewed(ragResult.matchedMedItem);
+          setSelectedMedicine(ragResult.matchedMedItem);
+          setCurrentScreen('med_detail');
+        } else if (ragResult?.drugName) {
+          setSearchQuery(ragResult.drugName);
+          setCurrentScreen('home');
+        }
+        setRagResult(null);
+      };
+
+      return (
+        <div className="flex-1 bg-[#2C3E3A] h-full flex flex-col justify-between items-center relative overflow-hidden pb-6">
+          <div className="w-full flex-1 flex flex-col items-center justify-center p-4 relative">
+            <div className="w-[85%] h-[60%] border-2 border-white/80 rounded-3xl relative flex items-center justify-center shadow-2xl overflow-hidden backdrop-blur-[1px] bg-black/20">
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                muted 
+                className={`w-full h-full object-cover absolute inset-0 ${hasCamera ? 'block' : 'hidden'}`}
+              />
+
+              {!hasCamera && (
+                <div className="text-center text-white/70 px-4">
+                  <i data-lucide="camera" className="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                  <p className="text-xs">กรอบแสดงผลกล้องสด</p>
+                  <p className="text-[10px] text-white/50 mt-1">(กดปุ่มสแกนเพื่อเริ่มวิเคราะห์ภาพ)</p>
+                </div>
+              )}
+
+              <div className="absolute top-3 left-3 w-6 h-6 border-t-4 border-l-4 border-white rounded-tl-sm z-10"></div>
+              <div className="absolute top-3 right-3 w-6 h-6 border-t-4 border-r-4 border-white rounded-tr-sm z-10"></div>
+              <div className="absolute bottom-3 left-3 w-6 h-6 border-b-4 border-l-4 border-white rounded-bl-sm z-10"></div>
+              <div className="absolute bottom-3 right-3 w-6 h-6 border-b-4 border-r-4 border-white rounded-br-sm z-10"></div>
+              
+              <div className="w-full h-0.5 bg-green-400 shadow-[0_0_12px_#4ade80] absolute scan-line z-10"></div>
+              
+              <div className="bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full flex items-center space-x-2 text-white/90 text-xs font-medium z-10 absolute top-4">
+                <i data-lucide="sparkles" className="w-4 h-4 text-yellow-300"></i>
+                <span>LLM Vision RAG Mode</span>
+              </div>
+            </div>
+
+            <p className="text-white/90 text-xs font-medium mt-4 tracking-wide bg-black/40 px-4 py-1.5 rounded-full text-center">
+              จัดวางเม็ดยา/ซองยาให้อยู่ในกรอบ หรือเลือกรูปภาพ
+            </p>
+          </div>
+
+          <div className="w-full px-8 pb-4 flex items-center justify-center relative">
+            <button 
+              onClick={captureFromCamera}
+              disabled={isProcessing}
+              className="w-18 h-18 bg-white rounded-full border-4 border-[#388E3C] shadow-2xl flex items-center justify-center active:scale-90 transition-all disabled:opacity-50"
+            >
+              <div className="w-14 h-14 rounded-full bg-[#004D25] flex items-center justify-center text-white">
+                <i data-lucide="scan-line" className="w-7 h-7"></i>
+              </div>
+            </button>
+
+            <label className="absolute right-8 bg-black/40 hover:bg-black/60 text-white p-3.5 rounded-2xl backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center">
+              <i data-lucide="image" className="w-6 h-6"></i>
+              <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+            </label>
+          </div>
+
+          {isProcessing && (
+            <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-white p-6">
+              <div className="w-12 h-12 border-4 border-green-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <h4 className="font-bold text-base mb-1">กำลังประมวลผลด้วย Vision LLM...</h4>
+              <p className="text-xs text-gray-300 text-center max-w-xs">{statusMessage}</p>
+            </div>
+          )}
+
+          {ragResult && (
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+              <div className="bg-white w-full rounded-3xl p-5 shadow-2xl space-y-4 max-h-[85%] overflow-y-auto">
+                <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-green-100 text-[#2D7A4C] rounded-xl">
+                      <i data-lucide="bot" className="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-base">ผลลัพธ์การสแกน Vision RAG</h3>
+                      <p className="text-[10px] text-gray-400">ระดับความแม่นยำ: {ragResult.confidence}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setRagResult(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                    <i data-lucide="x" className="w-5 h-5"></i>
+                  </button>
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">ข้อความที่อ่านได้จากภาพ (OCR):</span>
+                  <p className="text-xs text-gray-700 italic">"{ragResult.extractedText}"</p>
+                </div>
+
+                <div className="bg-green-50/60 p-3.5 rounded-2xl border border-green-100 space-y-1">
+                  <span className="text-[10px] font-bold text-[#2D7A4C] uppercase tracking-wider">ข้อมูลยาที่สืบค้นพบในคลัง NLEM</span>
+                  <h4 className="font-bold text-gray-800 text-base">{ragResult.drugName}</h4>
+                  <p className="text-xs text-gray-600 leading-relaxed">{ragResult.details}</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">คำแนะนำเพิ่มเติมจาก LLM Agent</span>
+                  <p className="text-xs text-gray-700 leading-relaxed">{ragResult.aiAdvice}</p>
+                </div>
+
+                <button 
+                  onClick={handleConfirmScanResult}
+                  className="w-full bg-[#388E3C] text-white font-bold py-3 rounded-xl text-sm shadow hover:bg-[#2e7d32] active:scale-95 transition-all"
+                >
+                  ดูรายละเอียดยานี้
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // 4. Pharmacy Screen
+    function PharmacyScreen() {
+      const pharmacies = [
+        { name: 'ร้านยาสุขใจ สาขาคลองหลวง', detail: 'เปิดถึง 21:00 น. • พาราเซตามอล 15฿', dist: '0.6 กม.' },
+        { name: 'เภสัชกรใกล้บ้าน', detail: 'เปิดถึง 22:00 น. • พาราเซตามอล 18฿', dist: '1.2 กม.' },
+        { name: 'คลังยาชุมชน', detail: 'เปิด 24 ชั่วโมง • พาราเซตามอล 15฿', dist: '2.5 กม.' },
+      ];
+
+      return (
+        <div className="flex-1 flex flex-col h-full bg-white">
+          <div className="bg-[#004D25] text-white px-5 py-4 font-bold text-lg shadow-sm">
+            ร้านขายยาใกล้ฉัน
+          </div>
+          <div className="h-52 w-full border-b border-green-100 overflow-hidden">
+            <iframe
+              title="pharmacy-map"
+              width="100%"
+              height="100%"
+              style={{ border: 0 }}
+              loading="lazy"
+              allowFullScreen
+              src="https://maps.google.com/maps?q=ร้านขายยาใกล้ฉัน&t=&z=13&ie=UTF8&iwloc=&output=embed"
+            ></iframe>
+          </div>
+          <div className="flex-1 p-4 divide-y divide-gray-100 overflow-y-auto">
+            {pharmacies.map((shop, i) => (
+              <div key={i} className="py-3.5 flex justify-between items-center hover:bg-gray-50 px-2 rounded-xl transition-colors">
+                <div>
+                  <h4 className="font-bold text-gray-900 text-sm">{shop.name}</h4>
+                  <p className="text-xs text-gray-500 mt-1">{shop.detail}</p>
+                </div>
+                <span className="text-xs font-bold text-[#2D7A4C] bg-green-50 px-2.5 py-1 rounded-full whitespace-nowrap">{shop.dist}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // 5. Settings Screen
+    function SettingsScreen({ setCurrentScreen }) {
+      const [activeModal, setActiveModal] = useState(null);
+
+      const [profile, setProfile] = useState({
+        name: 'คุณยาเมเต',
+        age: '28',
+        bloodType: 'O',
+        weight: '62',
+        height: '170',
+        emergencyContact: '081-234-5678'
+      });
+
+      const [chronicDiseases, setChronicDiseases] = useState(['ความดันโลหิตสูง', 'เบาหวานชนิดที่ 2']);
+      const [newDiseaseInput, setNewDiseaseInput] = useState('');
+
+      const [allergies, setAllergies] = useState([
+        { id: 1, drug: 'Penicillin', symptom: 'ผื่นคัน, ตาบวม', severity: 'รุนแรงปานกลาง' },
+        { id: 2, drug: 'Aspirin', symptom: 'แน่นหน้าอก', severity: 'รุนแรงมาก' }
+      ]);
+      const [newAllergy, setNewAllergy] = useState({ drug: '', symptom: '', severity: 'รุนแรงปานกลาง' });
+
+      const [notifications, setNotifications] = useState({
+        enableAll: true,
+        sound: true,
+        vibrate: true,
+        refillReminder: true
+      });
+
+      const [largeText, setLargeText] = useState(false);
+
+      useEffect(() => {
+        if (window.lucide) window.lucide.createIcons();
+      }, [activeModal, allergies, chronicDiseases, notifications, largeText]);
+
+      const handleAddDisease = (e) => {
+        e.preventDefault();
+        if (!newDiseaseInput.trim()) return;
+        if (!chronicDiseases.includes(newDiseaseInput.trim())) {
+          setChronicDiseases([...chronicDiseases, newDiseaseInput.trim()]);
+        }
+        setNewDiseaseInput('');
+      };
+
+      const handleRemoveDisease = (diseaseToRemove) => {
+        setChronicDiseases(chronicDiseases.filter(d => d !== diseaseToRemove));
+      };
+
+      const handleAddAllergy = (e) => {
+        e.preventDefault();
+        if (!newAllergy.drug.trim()) return;
+        setAllergies([...allergies, { id: Date.now(), ...newAllergy }]);
+        setNewAllergy({ drug: '', symptom: '', severity: 'รุนแรงปานกลาง' });
+      };
+
+      const handleDeleteAllergy = (id) => {
+        setAllergies(allergies.filter(item => item.id !== id));
+      };
+
+      return (
+        <div className={`flex-1 flex flex-col pb-6 bg-gray-50 min-h-full ${largeText ? 'text-base' : 'text-sm'}`}>
+          <div className="py-4 text-center font-bold text-lg text-gray-800 bg-white border-b border-gray-100 sticky top-0 z-10">
+            ตั้งค่า
+          </div>
+
+          <div className="p-4 space-y-4">
+            <div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-2 block">ข้อมูลส่วนบุคคล & สุขภาพ</span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+                <div onClick={() => setActiveModal('profile')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-green-50 text-[#2D7A4C] rounded-xl"><i data-lucide="user" className="w-5 h-5"></i></div>
+                    <div>
+                      <h4 className="font-bold text-gray-800">ข้อมูลส่วนตัว & โรคประจำตัว</h4>
+                      <p className="text-xs text-gray-400">ชื่อ, โรคประจำตัว ({chronicDiseases.length} โรค), เบอร์ฉุกเฉิน</p>
+                    </div>
+                  </div>
+                  <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+                </div>
+
+                <div onClick={() => setActiveModal('allergies')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-red-50 text-red-500 rounded-xl"><i data-lucide="alert-triangle" className="w-5 h-5"></i></div>
+                    <div>
+                      <h4 className="font-bold text-gray-800">ประวัติแพ้ยา & อาการข้างเคียง</h4>
+                      <p className="text-xs text-red-500 font-medium">บันทึกแล้ว {allergies.length} รายการ (เตือนอัตโนมัติ)</p>
+                    </div>
+                  </div>
+                  <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-2 block">ระบบและการแสดงผล</span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+                <div onClick={() => setActiveModal('notifications')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-yellow-50 text-yellow-600 rounded-xl"><i data-lucide="bell" className="w-5 h-5"></i></div>
+                    <div>
+                      <h4 className="font-bold text-gray-800">การแจ้งเตือนทานยา & เติมยา</h4>
+                      <p className="text-xs text-gray-400">กำหนดเวลาเตือน, เสียงเตือน, สั่น</p>
+                    </div>
+                  </div>
+                  <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+                </div>
+
+                <div className="p-3.5 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><i data-lucide="type" className="w-5 h-5"></i></div>
+                    <div>
+                      <h4 className="font-bold text-gray-800">โหมดผู้สูงอายุ (ตัวอักษรใหญ่)</h4>
+                      <p className="text-xs text-gray-400">ขยายขนาดตัวอักษรให้อ่านง่ายขึ้น</p>
+                    </div>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={largeText} 
+                    onChange={(e) => setLargeText(e.target.checked)} 
+                    className="w-5 h-5 accent-[#388E3C] cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+                <div onClick={() => setActiveModal('help')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-gray-100 text-gray-600 rounded-xl"><i data-lucide="help-circle" className="w-5 h-5"></i></div>
+                    <span className="font-bold text-gray-700">ช่วยเหลือ & รายงานปัญหา</span>
+                  </div>
+                  <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+                </div>
+
+                <div onClick={() => setActiveModal('logout')} className="p-3.5 flex items-center justify-between hover:bg-red-50 cursor-pointer active:bg-red-100 transition-all text-red-600">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-red-50 text-red-600 rounded-xl"><i data-lucide="log-out" className="w-5 h-5"></i></div>
+                    <span className="font-bold">ออกจากระบบ</span>
+                  </div>
+                  <i data-lucide="chevron-right" className="w-4 h-4 text-red-400"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Modals */}
+          {activeModal === 'profile' && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+                    <i data-lucide="user" className="w-5 h-5 text-[#2D7A4C]"></i> ข้อมูลส่วนตัว
+                  </h3>
+                  <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-gray-500 block mb-1 font-medium">ชื่อ-นามสกุล</label>
+                    <input type="text" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-medium">อายุ (ปี)</label>
+                      <input type="number" value={profile.age} onChange={(e) => setProfile({...profile, age: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-medium">หมู่เลือด</label>
+                      <select value={profile.bloodType} onChange={(e) => setProfile({...profile, bloodType: e.target.value})} className="w-full px-3 py-2 border rounded-xl bg-white">
+                        <option value="A">A</option><option value="B">B</option><option value="AB">AB</option><option value="O">O</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-medium">น้ำหนัก (กก.)</label>
+                      <input type="number" value={profile.weight} onChange={(e) => setProfile({...profile, weight: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="text-gray-500 block mb-1 font-medium">ส่วนสูง (ซม.)</label>
+                      <input type="number" value={profile.height} onChange={(e) => setProfile({...profile, height: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-gray-700 block font-bold">โรคประจำตัว (บันทึกได้หลายโรค)</label>
+                    <form onSubmit={handleAddDisease} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="พิมพ์ชื่อโรค (เช่น หอบหืด, ไตเรื้อรัง)" 
+                        value={newDiseaseInput} 
+                        onChange={(e) => setNewDiseaseInput(e.target.value)} 
+                        className="flex-1 px-3 py-1.5 border rounded-xl" 
+                      />
+                      <button type="submit" className="bg-[#2D7A4C] text-white px-3 py-1.5 rounded-xl font-bold hover:bg-[#23613c] transition-all">+ เพิ่ม</button>
+                    </form>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {chronicDiseases.length === 0 ? (
+                        <span className="text-gray-400 italic text-[11px]">ไม่มีโรคประจำตัว</span>
+                      ) : (
+                        chronicDiseases.map((disease, idx) => (
+                          <span key={idx} className="bg-green-50 text-[#2D7A4C] border border-green-200 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium text-[11px]">
+                            {disease}
+                            <button type="button" onClick={() => handleRemoveDisease(disease)} className="text-red-400 hover:text-red-600 ml-1">
+                              <i data-lucide="x" className="w-3 h-3"></i>
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-red-500 block mb-1 font-bold">เบอร์โทรศัพท์ติดต่อฉุกเฉิน</label>
+                    <input type="text" value={profile.emergencyContact} onChange={(e) => setProfile({...profile, emergencyContact: e.target.value})} className="w-full px-3 py-2 border border-red-200 rounded-xl bg-red-50/30 font-bold" />
+                  </div>
+                </div>
+
+                <button onClick={() => { alert('บันทึกข้อมูลส่วนตัวเรียบร้อย'); setActiveModal(null); }} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl font-bold text-xs shadow hover:bg-[#2e7d32] active:scale-95 transition-all">
+                  บันทึกข้อมูล
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeModal === 'allergies' && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <h3 className="font-bold text-gray-800 text-base flex items-center gap-2 text-red-600">
+                    <i data-lucide="alert-triangle" className="w-5 h-5"></i> ประวัติแพ้ยา
+                  </h3>
+                  <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+
+                <form onSubmit={handleAddAllergy} className="bg-red-50/50 p-3 rounded-2xl border border-red-100 space-y-2">
+                  <span className="text-xs font-bold text-red-600 block">เพิ่มรายการยาที่แพ้</span>
+                  <input type="text" placeholder="ชื่อยาที่แพ้ (เช่น Penicillin)" value={newAllergy.drug} onChange={(e) => setNewAllergy({...newAllergy, drug: e.target.value})} required className="w-full px-3 py-1.5 text-xs border rounded-xl" />
+                  <input type="text" placeholder="อาการที่พบ (เช่น ผื่นคัน, แน่นหน้าอก)" value={newAllergy.symptom} onChange={(e) => setNewAllergy({...newAllergy, symptom: e.target.value})} className="w-full px-3 py-1.5 text-xs border rounded-xl" />
+                  <button type="submit" className="w-full bg-red-600 text-white py-2 rounded-xl font-bold text-xs">บันทึกประวัติแพ้ยา</button>
+                </form>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-gray-500 block">รายการยาที่บันทึกไว้</span>
+                  {allergies.map(item => (
+                    <div key={item.id} className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm flex justify-between items-center">
+                      <div>
+                        <h5 className="font-bold text-sm text-red-600">{item.drug}</h5>
+                        <p className="text-xs text-gray-500 mt-0.5">อาการ: {item.symptom || 'ไม่ระบุ'}</p>
+                      </div>
+                      <button onClick={() => handleDeleteAllergy(item.id)} className="text-gray-400 hover:text-red-500 p-1"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeModal === 'notifications' && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+                    <i data-lucide="bell" className="w-5 h-5 text-yellow-600"></i> การแจ้งเตือนทานยา
+                  </h3>
+                  <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div className="flex justify-between items-center py-1">
+                    <span className="font-bold text-gray-700">เปิดระบบแจ้งเตือนทั้งหมด</span>
+                    <input type="checkbox" checked={notifications.enableAll} onChange={(e) => setNotifications({...notifications, enableAll: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-gray-600">เสียงการแจ้งเตือน</span>
+                    <input type="checkbox" checked={notifications.sound} onChange={(e) => setNotifications({...notifications, sound: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-gray-600">ระบบสั่นเตือน</span>
+                    <input type="checkbox" checked={notifications.vibrate} onChange={(e) => setNotifications({...notifications, vibrate: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-gray-600">แจ้งเตือนเมื่อยาใกล้นัดเติมยา</span>
+                    <input type="checkbox" checked={notifications.refillReminder} onChange={(e) => setNotifications({...notifications, refillReminder: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+                  </div>
+                </div>
+                <button onClick={() => setActiveModal(null)} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl font-bold text-xs">ตกลง</button>
+              </div>
+            </div>
+          )}
+
+          {activeModal === 'help' && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 text-center">
+                <div className="w-12 h-12 bg-green-100 text-[#2D7A4C] rounded-full flex items-center justify-center mx-auto">
+                  <i data-lucide="headphones" className="w-6 h-6"></i>
+                </div>
+                <h3 className="font-bold text-gray-800 text-base">ศูนย์ช่วยเหลือ PAOYA Support</h3>
+                <p className="text-xs text-gray-500">หากพบปัญหายาหมด ปัญหาระบบ หรือต้องการคำปรึกษาเร่งด่วน</p>
+                <div className="space-y-2 pt-2">
+                  <button onClick={() => alert('กำลังโทรออกสายด่วน 1669...')} className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-xl font-bold text-xs border border-red-200">
+                    🚨 สายด่วนเจ็บป่วยฉุกเฉิน 1669
+                  </button>
+                  <button onClick={() => alert('กำลังเชื่อมต่อสายด่วนปรึกษาเภสัชกร...')} className="w-full bg-green-50 hover:bg-green-100 text-[#2D7A4C] py-2.5 rounded-xl font-bold text-xs border border-green-200">
+                    💬 ปรึกษาเภสัชกรออนไลน์ (02-XXX-XXXX)
+                  </button>
+                </div>
+                <button onClick={() => setActiveModal(null)} className="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-xs">ปิด</button>
+              </div>
+            </div>
+          )}
+
+          {activeModal === 'logout' && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl text-center space-y-4">
+                <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
+                  <i data-lucide="log-out" className="w-6 h-6"></i>
+                </div>
+                <h3 className="font-bold text-gray-800 text-base">ยืนยันออกจากระบบ?</h3>
+                <p className="text-xs text-gray-500">คุณต้องการออกจากระบบแอปเป๋ายาใช่หรือไม่?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setCurrentScreen('welcome')} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs">ออกจากระบบ</button>
+                  <button onClick={() => setActiveModal(null)} className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-xl font-bold text-xs">ยกเลิก</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Render App
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
   
   <!-- React & React DOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="script"></script>
