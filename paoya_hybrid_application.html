@@ -624,26 +624,316 @@
     }
 
     // 2. My Meds Screen
-    function MyMedsScreen() {
-      return (
-        <div className="flex-1 flex flex-col pb-6">
-          <div className="py-4 text-center font-bold text-lg text-gray-800 border-b border-gray-100">
-            ยาของฉัน
+    // 2. My Meds Screen (ปรับปรุง: เพิ่มรายละเอียด และสามารถ เพิ่ม/แก้ไข/ลบ ข้อมูลยาประจำและวันนัดหมายได้)
+function MyMedsScreen() {
+  const [activeTab, setActiveTab] = useState(null); // null | 'meds' | 'appointments'
+
+  // State สำหรับเก็บรายการยาประจำ
+  const [myMedsList, setMyMedsList] = useState([
+    { id: 1, name: 'Paracetamol', dosage: '500 mg', time: 'หลังอาหาร เช้า-เย็น' },
+    { id: 2, name: 'Amlodipine', dosage: '5 mg', time: 'หลังอาหาร เช้า' }
+  ]);
+
+  // State สำหรับเก็บรายการวันนัดหมาย
+  const [appointments, setAppointments] = useState([
+    { id: 1, hospital: 'โรงพยาบาลจุฬาลงกรณ์', doctor: 'นพ. สมชาย ใจดี', date: '2026-11-15', time: '09:00' }
+  ]);
+
+  // State สำหรับจัดการฟอร์ม เพิ่ม/แก้ไข ยาประจำ
+  const [editingMed, setEditingMed] = useState(null);
+  const [medForm, setMedForm] = useState({ name: '', dosage: '', time: '' });
+
+  // State สำหรับจัดการฟอร์ม เพิ่ม/แก้ไข วันนัดหมาย
+  const [editingApp, setEditingApp] = useState(null);
+  const [appForm, setAppForm] = useState({ hospital: '', doctor: '', date: '', time: '' });
+
+  useEffect(() => {
+    if (window.lucide) window.lucide.createIcons();
+  }, [activeTab, myMedsList, appointments, editingMed, editingApp]);
+
+  // --- Handlers สำหรับ ยาประจำ ---
+  const handleSaveMed = (e) => {
+    e.preventDefault();
+    if (!medForm.name.trim()) return;
+
+    if (editingMed) {
+      setMyMedsList(myMedsList.map(item => item.id === editingMed.id ? { ...item, ...medForm } : item));
+    } else {
+      setMyMedsList([...myMedsList, { id: Date.now(), ...medForm }]);
+    }
+    setEditingMed(null);
+    setMedForm({ name: '', dosage: '', time: '' });
+  };
+
+  const handleEditMed = (item) => {
+    setEditingMed(item);
+    setMedForm({ name: item.name, dosage: item.dosage, time: item.time });
+  };
+
+  const handleDeleteMed = (id) => {
+    setMyMedsList(myMedsList.filter(item => item.id !== id));
+  };
+
+  // --- Handlers สำหรับ วันนัดหมาย ---
+  const handleSaveApp = (e) => {
+    e.preventDefault();
+    if (!appForm.hospital.trim()) return;
+
+    if (editingApp) {
+      setAppointments(appointments.map(item => item.id === editingApp.id ? { ...item, ...appForm } : item));
+    } else {
+      setAppointments([...appointments, { id: Date.now(), ...appForm }]);
+    }
+    setEditingApp(null);
+    setAppForm({ hospital: '', doctor: '', date: '', time: '' });
+  };
+
+  const handleEditApp = (item) => {
+    setEditingApp(item);
+    setAppForm({ hospital: item.hospital, doctor: item.doctor, date: item.date, time: item.time });
+  };
+
+  const handleDeleteApp = (id) => {
+    setAppointments(appointments.filter(item => item.id !== id));
+  };
+
+  return (
+    <div className="flex-1 flex flex-col pb-6 bg-gray-50 min-h-full">
+      {/* Header */}
+      <div className="py-4 px-4 bg-white text-center font-bold text-lg text-gray-800 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
+        {activeTab ? (
+          <button 
+            onClick={() => { setActiveTab(null); setEditingMed(null); setEditingApp(null); }}
+            className="p-1 -ml-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 active:scale-95"
+          >
+            <i data-lucide="chevron-left" className="w-6 h-6"></i>
+          </button>
+        ) : <div className="w-6"></div>}
+        
+        <span>{activeTab === 'meds' ? 'ยาประจำ' : activeTab === 'appointments' ? 'วันนัดหมาย' : 'ยาของฉัน'}</span>
+        <div className="w-6"></div>
+      </div>
+
+      {/* หน้าแรก: เลือกหมวดหมู่ (ยาประจำ / วันนัดหมาย) */}
+      {!activeTab && (
+        <div className="p-4 space-y-4">
+          <div 
+            onClick={() => setActiveTab('meds')}
+            className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+          >
+            <div className="p-3 bg-red-50 text-red-500 rounded-xl mr-4 flex-shrink-0">
+              <i data-lucide="heart" className="w-7 h-7"></i>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-800 text-base">ยาประจำ</h4>
+              <p className="text-xs text-gray-500 mt-0.5">บันทึกและจัดการรายการยาที่ทานประจำ ({myMedsList.length} รายการ)</p>
+            </div>
+            <i data-lucide="chevron-right" className="w-5 h-5 text-gray-400"></i>
           </div>
-          <div className="p-4 space-y-4">
-            <div className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm">
-              <div className="p-3 bg-red-50 text-red-500 rounded-xl mr-4"><i data-lucide="heart" className="w-7 h-7"></i></div>
-              <div><h4 className="font-bold text-gray-800 text-base">ยาประจำ</h4><p className="text-xs text-gray-500">บันทึกยาที่ทานประจำของคุณ</p></div>
+
+          <div 
+            onClick={() => setActiveTab('appointments')}
+            className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+          >
+            <div className="p-3 bg-blue-50 text-blue-500 rounded-xl mr-4 flex-shrink-0">
+              <i data-lucide="calendar" className="w-7 h-7"></i>
             </div>
-            <div className="flex items-center p-4 border border-gray-200 rounded-2xl bg-white shadow-sm">
-              <div className="p-3 bg-blue-50 text-blue-500 rounded-xl mr-4"><i data-lucide="calendar" className="w-7 h-7"></i></div>
-              <div><h4 className="font-bold text-gray-800 text-base">วันนัดหมาย</h4><p className="text-xs text-gray-500">บันทึกวันนัดหมายแพทย์ของคุณ</p></div>
+            <div className="flex-1">
+              <h4 className="font-bold text-gray-800 text-base">วันนัดหมาย</h4>
+              <p className="text-xs text-gray-500 mt-0.5">บันทึกวันนัดหมายแพทย์ของคุณ ({appointments.length} รายการ)</p>
             </div>
+            <i data-lucide="chevron-right" className="w-5 h-5 text-gray-400"></i>
           </div>
         </div>
-      );
-    }
+      )}
 
+      {/* รายละเอียด: ยาประจำ */}
+      {activeTab === 'meds' && (
+        <div className="p-4 space-y-4">
+          {/* ฟอร์ม เพิ่ม/แก้ไข ยาประจำ */}
+          <form onSubmit={handleSaveMed} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+            <h4 className="font-bold text-sm text-[#2D7A4C] flex items-center gap-1.5">
+              <i data-lucide={editingMed ? "edit-3" : "plus-circle"} className="w-4 h-4"></i>
+              {editingMed ? 'แก้ไขข้อมูลยาประจำ' : 'เพิ่มยาประจำใหม่'}
+            </h4>
+            <div className="space-y-2">
+              <input 
+                type="text" 
+                placeholder="ชื่อยา (เช่น Paracetamol)" 
+                value={medForm.name} 
+                onChange={(e) => setMedForm({ ...medForm, name: e.target.value })}
+                required 
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="text" 
+                  placeholder="ความแรง/ขนาด (เช่น 500 mg)" 
+                  value={medForm.dosage} 
+                  onChange={(e) => setMedForm({ ...medForm, dosage: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                />
+                <input 
+                  type="text" 
+                  placeholder="วิธีทาน (เช่น หลังอาหาร เช้า)" 
+                  value={medForm.time} 
+                  onChange={(e) => setMedForm({ ...medForm, time: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button 
+                type="submit" 
+                className="flex-1 bg-[#388E3C] hover:bg-[#2e7d32] text-white py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                {editingMed ? 'บันทึกการแก้ไข' : 'เพิ่มรายการ'}
+              </button>
+              {editingMed && (
+                <button 
+                  type="button" 
+                  onClick={() => { setEditingMed(null); setMedForm({ name: '', dosage: '', time: '' }); }}
+                  className="px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs font-bold transition-all"
+                >
+                  ยกเลิก
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* รายการยาประจำ */}
+          <div className="space-y-2">
+            <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider px-1">รายการยาประจำของคุณ</h4>
+            {myMedsList.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-6 bg-white rounded-2xl border border-dashed border-gray-200">ยังไม่มีรายการยาประจำ</p>
+            ) : (
+              myMedsList.map(item => (
+                <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                  <div>
+                    <h5 className="font-bold text-sm text-gray-900">{item.name}</h5>
+                    <p className="text-xs text-gray-500 mt-0.5">ขนาด: {item.dosage || '-'} | วิธีทาน: {item.time || '-'}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => handleEditMed(item)}
+                      className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                    >
+                      <i data-lucide="pencil" className="w-4 h-4"></i>
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteMed(item.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all"
+                    >
+                      <i data-lucide="trash-2" className="w-4 h-4"></i>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* รายละเอียด: วันนัดหมาย */}
+      {activeTab === 'appointments' && (
+        <div className="p-4 space-y-4">
+          {/* ฟอร์ม เพิ่ม/แก้ไข วันนัดหมาย */}
+          <form onSubmit={handleSaveApp} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+            <h4 className="font-bold text-sm text-[#2D7A4C] flex items-center gap-1.5">
+              <i data-lucide={editingApp ? "edit-3" : "plus-circle"} className="w-4 h-4"></i>
+              {editingApp ? 'แก้ไขวันนัดหมาย' : 'เพิ่มนัดหมายใหม่'}
+            </h4>
+            <div className="space-y-2">
+              <input 
+                type="text" 
+                placeholder="ชื่อโรงพยาบาล / คลินิก" 
+                value={appForm.hospital} 
+                onChange={(e) => setAppForm({ ...appForm, hospital: e.target.value })}
+                required 
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+              />
+              <input 
+                type="text" 
+                placeholder="ชื่อแพทย์ / แผนก" 
+                value={appForm.doctor} 
+                onChange={(e) => setAppForm({ ...appForm, doctor: e.target.value })}
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="date" 
+                  value={appForm.date} 
+                  onChange={(e) => setAppForm({ ...appForm, date: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                />
+                <input 
+                  type="time" 
+                  value={appForm.time} 
+                  onChange={(e) => setAppForm({ ...appForm, time: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#2D7A4C]" 
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button 
+                type="submit" 
+                className="flex-1 bg-[#388E3C] hover:bg-[#2e7d32] text-white py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                {editingApp ? 'บันทึกการแก้ไข' : 'เพิ่มนัดหมาย'}
+              </button>
+              {editingApp && (
+                <button 
+                  type="button" 
+                  onClick={() => { setEditingApp(null); setAppForm({ hospital: '', doctor: '', date: '', time: '' }); }}
+                  className="px-4 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs font-bold transition-all"
+                >
+                  ยกเลิก
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* รายการวันนัดหมาย */}
+          <div className="space-y-2">
+            <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider px-1">วันนัดหมายทั้งหมด</h4>
+            {appointments.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-6 bg-white rounded-2xl border border-dashed border-gray-200">ยังไม่มีรายการนัดหมาย</p>
+            ) : (
+              appointments.map(item => (
+                <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                  <div>
+                    <h5 className="font-bold text-sm text-gray-900">{item.hospital}</h5>
+                    <p className="text-xs text-gray-600 mt-0.5">{item.doctor || 'ไม่ระบุชื่อแพทย์'}</p>
+                    <p className="text-xs text-[#2D7A4C] font-semibold mt-1 flex items-center gap-1">
+                      <i data-lucide="clock" className="w-3.5 h-3.5"></i>
+                      วันที่ {item.date} เวลา {item.time} น.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => handleEditApp(item)}
+                      className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                    >
+                      <i data-lucide="pencil" className="w-4 h-4"></i>
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteApp(item.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all"
+                    >
+                      <i data-lucide="trash-2" className="w-4 h-4"></i>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
     // 3. Camera / Scan Screen (ปรับปรุง: กล้องจริง + LLM OCR RAG + ย้ายปุ่มอัลบั้มภาพไว้ขวาล่าง)
     function ScanScreen({ medicines, setSearchQuery, setSelectedMedicine, setCurrentScreen, addRecentlyViewed }) {
       const videoRef = useRef(null);
