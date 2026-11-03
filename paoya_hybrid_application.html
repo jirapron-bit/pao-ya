@@ -1246,26 +1246,358 @@ function MyMedsScreen() {
     }
 
     // 5. Settings Screen
-    function SettingsScreen({ setCurrentScreen }) {
-      return (
-        <div className="flex-1 flex flex-col pb-6">
-          <div className="py-4 text-center font-bold text-lg text-gray-800 border-b border-gray-100">ตั้งค่า</div>
-          <div className="p-4 space-y-2">
-            <div className="p-3 flex items-center justify-between hover:bg-gray-50 rounded-xl cursor-pointer">
-              <div className="flex items-center space-x-3"><i data-lucide="user" className="w-5 h-5 text-gray-600"></i><span className="text-sm font-medium text-gray-700">ข้อมูลส่วนตัว</span></div>
+    // 5. Settings Screen (อัปเกรด: เพิ่มรายละเอียดฟังก์ชันย่อย และเพิ่มเมนูสำคัญสำหรับแอป HealthTech)
+function SettingsScreen({ setCurrentScreen }) {
+  const [activeModal, setActiveModal] = useState(null); // 'profile' | 'notifications' | 'allergies' | 'rights' | 'accessibility' | 'help' | 'logout'
+
+  // State ข้อมูลส่วนตัว
+  const [profile, setProfile] = useState({
+    name: 'คุณยาเมเต',
+    age: '28',
+    bloodType: 'O',
+    weight: '62',
+    height: '170',
+    emergencyContact: '081-234-5678',
+    chronicDiseases: 'ความดันโลหิตสูง'
+  });
+
+  // State ประวัติแพ้ยา
+  const [allergies, setAllergies] = useState([
+    { id: 1, drug: 'Penicillin', symptom: 'ผื่นคัน, ตาบวม', severity: 'รุนแรงปานกลาง' },
+    { id: 2, drug: 'Aspirin', symptom: 'แน่นหน้าอก', severity: 'รุนแรงมาก' }
+  ]);
+  const [newAllergy, setNewAllergy] = useState({ drug: '', symptom: '', severity: 'รุนแรงปานกลาง' });
+
+  // State การแจ้งเตือน
+  const [notifications, setNotifications] = useState({
+    enableAll: true,
+    sound: true,
+    vibrate: true,
+    refillReminder: true
+  });
+
+  // State สิทธิ์การรักษา
+  const [insuranceRight, setInsuranceRight] = useState('ประกันสังคม (โรงพยาบาลศิริราช)');
+
+  // State โหมดการแสดงผล (Accessibility)
+  const [largeText, setLargeText] = useState(false);
+
+  useEffect(() => {
+    if (window.lucide) window.lucide.createIcons();
+  }, [activeModal, allergies, notifications, largeText]);
+
+  const handleAddAllergy = (e) => {
+    e.preventDefault();
+    if (!newAllergy.drug.trim()) return;
+    setAllergies([...allergies, { id: Date.now(), ...newAllergy }]);
+    setNewAllergy({ drug: '', symptom: '', severity: 'รุนแรงปานกลาง' });
+  };
+
+  const handleDeleteAllergy = (id) => {
+    setAllergies(allergies.filter(item => item.id !== id));
+  };
+
+  return (
+    <div className={`flex-1 flex flex-col pb-6 bg-gray-50 min-h-full ${largeText ? 'text-base' : 'text-sm'}`}>
+      <div className="py-4 text-center font-bold text-lg text-gray-800 bg-white border-b border-gray-100 sticky top-0 z-10">
+        ตั้งค่า
+      </div>
+
+      <div className="p-4 space-y-4">
+        
+        {/* หมวดที่ 1: ข้อมูลสุขภาพส่วนบุคคล */}
+        <div>
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-2 block">ข้อมูลส่วนบุคคล & สุขภาพ</span>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+            
+            {/* 1.1 ข้อมูลส่วนตัว */}
+            <div onClick={() => setActiveModal('profile')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-green-50 text-[#2D7A4C] rounded-xl"><i data-lucide="user" className="w-5 h-5"></i></div>
+                <div>
+                  <h4 className="font-bold text-gray-800">ข้อมูลส่วนตัว & เบอร์ฉุกเฉิน</h4>
+                  <p className="text-xs text-gray-400">ชื่อ, อายุ, หมู่เลือด, เบอร์โทรฉุกเฉิน</p>
+                </div>
+              </div>
               <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
             </div>
-            <div className="p-3 flex items-center justify-between hover:bg-gray-50 rounded-xl cursor-pointer">
-              <div className="flex items-center space-x-3"><i data-lucide="bell" className="w-5 h-5 text-gray-600"></i><span className="text-sm font-medium text-gray-700">การแจ้งเตือนทานยา</span></div>
+
+            {/* 1.2 ประวัติแพ้ยา (สำคัญมากสำหรับแอปยา) */}
+            <div onClick={() => setActiveModal('allergies')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-red-50 text-red-500 rounded-xl"><i data-lucide="alert-triangle" className="w-5 h-5"></i></div>
+                <div>
+                  <h4 className="font-bold text-gray-800">ประวัติแพ้ยา & อาการข้างเคียง</h4>
+                  <p className="text-xs text-red-500 font-medium">บันทึกแล้ว {allergies.length} รายการ (เตือนอัตโนมัติ)</p>
+                </div>
+              </div>
               <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
             </div>
-            <div onClick={() => setCurrentScreen('welcome')} className="p-3 flex items-center justify-between hover:bg-red-50 rounded-xl cursor-pointer text-red-600 mt-6">
-              <div className="flex items-center space-x-3"><i data-lucide="log-out" className="w-5 h-5"></i><span className="text-sm font-bold">ออกจากระบบ</span></div>
+
+            {/* 1.3 สิทธิ์การรักษาพยาบาล */}
+            <div onClick={() => setActiveModal('rights')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-50 text-blue-500 rounded-xl"><i data-lucide="shield-check" className="w-5 h-5"></i></div>
+                <div>
+                  <h4 className="font-bold text-gray-800">สิทธิ์การรักษาพยาบาล</h4>
+                  <p className="text-xs text-gray-400">{insuranceRight}</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+            </div>
+
+          </div>
+        </div>
+
+        {/* หมวดที่ 2: ระบบและการแจ้งเตือน */}
+        <div>
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-2 block">ระบบและการแสดงผล</span>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+            
+            {/* 2.1 การแจ้งเตือนทานยา */}
+            <div onClick={() => setActiveModal('notifications')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-yellow-50 text-yellow-600 rounded-xl"><i data-lucide="bell" className="w-5 h-5"></i></div>
+                <div>
+                  <h4 className="font-bold text-gray-800">การแจ้งเตือนทานยา & เติมยา</h4>
+                  <p className="text-xs text-gray-400">กำหนดเวลาเตือน, เสียงเตือน, สั่น</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+            </div>
+
+            {/* 2.2 โหมดผู้สูงอายุ / ขนาดอักษร */}
+            <div className="p-3.5 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><i data-lucide="type" className="w-5 h-5"></i></div>
+                <div>
+                  <h4 className="font-bold text-gray-800">โหมดผู้สูงอายุ (ตัวอักษรใหญ่)</h4>
+                  <p className="text-xs text-gray-400">ขยายขนาดตัวอักษรให้อ่านง่ายขึ้น</p>
+                </div>
+              </div>
+              <input 
+                type="checkbox" 
+                checked={largeText} 
+                onChange={(e) => setLargeText(e.target.checked)} 
+                className="w-5 h-5 accent-[#388E3C] cursor-pointer"
+              />
+            </div>
+
+          </div>
+        </div>
+
+        {/* หมวดที่ 3: ช่วยเหลือ & ออกจากระบบ */}
+        <div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
+            
+            <div onClick={() => setActiveModal('help')} className="p-3.5 flex items-center justify-between hover:bg-gray-50 cursor-pointer active:bg-gray-100 transition-all">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gray-100 text-gray-600 rounded-xl"><i data-lucide="help-circle" className="w-5 h-5"></i></div>
+                <span className="font-bold text-gray-700">ช่วยเหลือ & รายงานปัญหา</span>
+              </div>
+              <i data-lucide="chevron-right" className="w-4 h-4 text-gray-400"></i>
+            </div>
+
+            <div onClick={() => setActiveModal('logout')} className="p-3.5 flex items-center justify-between hover:bg-red-50 cursor-pointer active:bg-red-100 transition-all text-red-600">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-red-50 text-red-600 rounded-xl"><i data-lucide="log-out" className="w-5 h-5"></i></div>
+                <span className="font-bold">ออกจากระบบ</span>
+              </div>
+              <i data-lucide="chevron-right" className="w-4 h-4 text-red-400"></i>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      {/* ================= MODALS ฟังก์ชันต่างๆ ================= */}
+
+      {/* Modal: ข้อมูลส่วนตัว */}
+      {activeModal === 'profile' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+                <i data-lucide="user" className="w-5 h-5 text-[#2D7A4C]"></i> ข้อมูลส่วนตัว
+              </h3>
+              <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-gray-500 block mb-1 font-medium">ชื่อ-นามสกุล</label>
+                <input type="text" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-gray-500 block mb-1 font-medium">อายุ (ปี)</label>
+                  <input type="number" value={profile.age} onChange={(e) => setProfile({...profile, age: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="text-gray-500 block mb-1 font-medium">หมู่เลือด</label>
+                  <select value={profile.bloodType} onChange={(e) => setProfile({...profile, bloodType: e.target.value})} className="w-full px-3 py-2 border rounded-xl bg-white">
+                    <option value="A">A</option><option value="B">B</option><option value="AB">AB</option><option value="O">O</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-gray-500 block mb-1 font-medium">น้ำหนัก (กก.)</label>
+                  <input type="number" value={profile.weight} onChange={(e) => setProfile({...profile, weight: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="text-gray-500 block mb-1 font-medium">ส่วนสูง (ซม.)</label>
+                  <input type="number" value={profile.height} onChange={(e) => setProfile({...profile, height: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+              </div>
+              <div>
+                <label className="text-gray-500 block mb-1 font-medium">โรคประจำตัว</label>
+                <input type="text" value={profile.chronicDiseases} onChange={(e) => setProfile({...profile, chronicDiseases: e.target.value})} className="w-full px-3 py-2 border rounded-xl" />
+              </div>
+              <div>
+                <label className="text-red-500 block mb-1 font-bold">เบอร์โทรศัพท์ติดต่อฉุกเฉิน</label>
+                <input type="text" value={profile.emergencyContact} onChange={(e) => setProfile({...profile, emergencyContact: e.target.value})} className="w-full px-3 py-2 border border-red-200 rounded-xl bg-red-50/30 font-bold" />
+              </div>
+            </div>
+            <button onClick={() => { alert('บันทึกข้อมูลส่วนตัวเรียบร้อย'); setActiveModal(null); }} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl font-bold text-xs">
+              บันทึกข้อมูล
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ประวัติแพ้ยา */}
+      {activeModal === 'allergies' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-gray-800 text-base flex items-center gap-2 text-red-600">
+                <i data-lucide="alert-triangle" className="w-5 h-5"></i> ประวัติแพ้ยา
+              </h3>
+              <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+            </div>
+
+            <form onSubmit={handleAddAllergy} className="bg-red-50/50 p-3 rounded-2xl border border-red-100 space-y-2">
+              <span className="text-xs font-bold text-red-600 block">เพิ่มรายการยาที่แพ้</span>
+              <input type="text" placeholder="ชื่อยาที่แพ้ (เช่น Penicillin)" value={newAllergy.drug} onChange={(e) => setNewAllergy({...newAllergy, drug: e.target.value})} required className="w-full px-3 py-1.5 text-xs border rounded-xl" />
+              <input type="text" placeholder="อาการที่พบ (เช่น ผื่นคัน, แน่นหน้าอก)" value={newAllergy.symptom} onChange={(e) => setNewAllergy({...newAllergy, symptom: e.target.value})} className="w-full px-3 py-1.5 text-xs border rounded-xl" />
+              <button type="submit" className="w-full bg-red-600 text-white py-2 rounded-xl font-bold text-xs">บันทึกประวัติแพ้ยา</button>
+            </form>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-gray-500 block">รายการยาที่บันทึกไว้</span>
+              {allergies.map(item => (
+                <div key={item.id} className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm flex justify-between items-center">
+                  <div>
+                    <h5 className="font-bold text-sm text-red-600">{item.drug}</h5>
+                    <p className="text-xs text-gray-500 mt-0.5">อาการ: {item.symptom || 'ไม่ระบุ'}</p>
+                  </div>
+                  <button onClick={() => handleDeleteAllergy(item.id)} className="text-gray-400 hover:text-red-500 p-1"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      );
-    }
+      )}
+
+      {/* Modal: การแจ้งเตือน */}
+      {activeModal === 'notifications' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+                <i data-lucide="bell" className="w-5 h-5 text-yellow-600"></i> การแจ้งเตือนทานยา
+              </h3>
+              <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1">
+                <span className="font-bold text-gray-700">เปิดระบบแจ้งเตือนทั้งหมด</span>
+                <input type="checkbox" checked={notifications.enableAll} onChange={(e) => setNotifications({...notifications, enableAll: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-gray-600">เสียงการแจ้งเตือน</span>
+                <input type="checkbox" checked={notifications.sound} onChange={(e) => setNotifications({...notifications, sound: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-gray-600">ระบบสั่นเตือน</span>
+                <input type="checkbox" checked={notifications.vibrate} onChange={(e) => setNotifications({...notifications, vibrate: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-gray-600">แจ้งเตือนเมื่อยาใกล้นัดเติมยา</span>
+                <input type="checkbox" checked={notifications.refillReminder} onChange={(e) => setNotifications({...notifications, refillReminder: e.target.checked})} className="w-4 h-4 accent-[#388E3C]" />
+              </div>
+            </div>
+            <button onClick={() => setActiveModal(null)} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl font-bold text-xs">ตกลง</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: สิทธิ์การรักษา */}
+      {activeModal === 'rights' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+                <i data-lucide="shield-check" className="w-5 h-5 text-blue-500"></i> สิทธิ์การรักษาพยาบาล
+              </h3>
+              <button onClick={() => setActiveModal(null)} className="text-gray-400 hover:text-gray-600"><i data-lucide="x" className="w-5 h-5"></i></button>
+            </div>
+            <div className="space-y-2 text-xs">
+              {['บัตรทอง (หลักประกันสุขภาพถ้วนหน้า)', 'ประกันสังคม (โรงพยาบาลศิริราช)', 'สวัสดิการข้าราชการ/รัฐวิสาหกิจ', 'ประกันสุขภาพเอกชน'].map((right, idx) => (
+                <label key={idx} className="flex items-center space-x-2.5 p-2.5 rounded-xl border border-gray-100 hover:bg-blue-50/50 cursor-pointer">
+                  <input type="radio" name="rights" checked={insuranceRight === right} onChange={() => setInsuranceRight(right)} className="accent-[#388E3C]" />
+                  <span className="text-gray-700 font-medium">{right}</span>
+                </label>
+              ))}
+            </div>
+            <button onClick={() => setActiveModal(null)} className="w-full bg-[#388E3C] text-white py-2.5 rounded-xl font-bold text-xs">บันทึกสิทธิ์การรักษา</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ช่วยเหลือ & ติดต่อ */}
+      {activeModal === 'help' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 bg-green-100 text-[#2D7A4C] rounded-full flex items-center justify-center mx-auto">
+              <i data-lucide="headphones" className="w-6 h-6"></i>
+            </div>
+            <h3 className="font-bold text-gray-800 text-base">ศูนย์ช่วยเหลือ PAOYA Support</h3>
+            <p className="text-xs text-gray-500">หากพบปัญหายาหมด ปัญหาระบบ หรือต้องการคำปรึกษาเร่งด่วน</p>
+            <div className="space-y-2 pt-2">
+              <button onClick={() => alert('กำลังโทรออกสายด่วน 1669...')} className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-xl font-bold text-xs border border-red-200">
+                🚨 สายด่วนเจ็บป่วยฉุกเฉิน 1669
+              </button>
+              <button onClick={() => alert('กำลังเชื่อมต่อสายด่วนปรึกษาเภสัชกร...')} className="w-full bg-green-50 hover:bg-green-100 text-[#2D7A4C] py-2.5 rounded-xl font-bold text-xs border border-green-200">
+                💬 ปรึกษาเภสัชกรออนไลน์ (02-XXX-XXXX)
+              </button>
+            </div>
+            <button onClick={() => setActiveModal(null)} className="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-xs">ปิด</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ยืนยันออกจากระบบ */}
+      {activeModal === 'logout' && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
+              <i data-lucide="log-out" className="w-6 h-6"></i>
+            </div>
+            <h3 className="font-bold text-gray-800 text-base">ยืนยันออกจากระบบ?</h3>
+            <p className="text-xs text-gray-500">คุณต้องการออกจากระบบแอปเป๋ายาใช่หรือไม่?</p>
+            <div className="flex gap-2">
+              <button onClick={() => setCurrentScreen('welcome')} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs">ออกจากระบบ</button>
+              <button onClick={() => setActiveModal(null)} className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-xl font-bold text-xs">ยกเลิก</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
 
     // Render App
     const root = ReactDOM.createRoot(document.getElementById('root'));
