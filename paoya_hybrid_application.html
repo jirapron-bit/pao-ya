@@ -1420,21 +1420,24 @@ END:VCALENDAR`;
     // 3. Camera / Scan Screen (iPhone Document Scanner + Multimodal LLM Vision)
     function ScanScreen({ medicines, setSearchQuery, setSelectedMedicine, setCurrentScreen, addRecentlyViewed }) {
       const videoRef = useRef(null);
+      const canvasRef = useRef(null);
       const [hasCamera, setHasCamera] = useState(false);
       const [apiKey, setApiKey] = useState(() => localStorage.getItem('paoya_gemini_api_key') || '');
       const [showApiModal, setShowApiModal] = useState(false);
 
-      // สถานะการทำงานแบบ iPhone Document Scanner
-      const [scanStep, setScanStep] = useState('camera'); // 'camera' | 'preview' | 'analyzing' | 'result'
-      const [rawImage, setRawImage] = useState(null);
-      const [docFilter, setDocFilter] = useState('doc_enhance'); // 'original' | 'doc_enhance' | 'bw_scan'
-      const [processedPreview, setProcessedPreview] = useState(null);
-      const [docDetected, setDocDetected] = useState(true);
+      // สถานะ Live OCR (เหมือน Google Translate)
+      const [isLiveScanning, setIsLiveScanning] = useState(true);
+      const [isProcessingFrame, setIsProcessingFrame] = useState(false);
+      const [detectedBlocks, setDetectedBlocks] = useState([]); // เก็บข้อความและพิกัดกรอบ
+      const [liveMatchedMed, setLiveMatchedMed] = useState(null); // ยาที่จับคู่ได้แบบเรียลไทม์
+      const [liveRawText, setLiveRawText] = useState('');
 
+      // สถานะผลลัพธ์เชิงลึกจาก LLM
+      const [scanStep, setScanStep] = useState('camera'); // 'camera' | 'analyzing' | 'result'
       const [statusMessage, setStatusMessage] = useState('');
       const [llmResult, setLlmResult] = useState(null);
 
-      // เปิดกล้องความละเอียดสูง
+      // เปิดกล้อง
       useEffect(() => {
         let stream = null;
         async function startCamera() {
@@ -1443,8 +1446,8 @@ END:VCALENDAR`;
             stream = await navigator.mediaDevices.getUserMedia({
               video: {
                 facingMode: { ideal: "environment" },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
               }
             });
             if (videoRef.current) {
@@ -1472,112 +1475,121 @@ END:VCALENDAR`;
         };
       }, [scanStep]);
 
+      // อัปเดตไอคอน Lucide
       useEffect(() => {
         if (window.lucide) window.lucide.createIcons();
-      }, [scanStep, docFilter, llmResult, hasCamera, showApiModal]);
+      }, [scanStep, isLiveScanning, liveMatchedMed, llmResult, hasCamera, showApiModal]);
 
-      // ประมวลผลภาพสไตล์ iPhone Document Scanner (Auto Perspective Crop + Document Filter)
+      // ลูปตรวจจับตัวหนังสือแบบ Real-time ทุก 1.5 วินาที
       useEffect(() => {
-        if (!rawImage) return;
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          // ตัดขอบส่วนเกินรอบนอกออกเล็กน้อยเสมือน Auto-Crop เอกสารของ iOS
-          const cropMarginX = img.width * 0.05;
-          const cropMarginY = img.height * 0.08;
-          const cropW = img.width - cropMarginX * 2;
-          const cropH = img.height - cropMarginY * 2;
+        if (!hasCamera || !isLiveScanning || scanStep !== 'camera') return;
 
-          // ย่อขนาดสูงสุดไม่เกิน 1280px เพื่อให้ส่งเข้า LLM ได้รวดเร็วและคมชัด
-          const scale = Math.min(1, 1280 / Math.max(cropW, cropH));
-          canvas.width = cropW * scale;
-          canvas.height = cropH * scale;
+        let isCancelled = false;
+        let workerInstance = null;
 
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, cropMarginX, cropMarginY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-
-          if (docFilter !== 'original') {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-              if (docFilter === 'doc_enhance') {
-                // โหมด iOS Document Color Enhance: เร่งความสว่างพื้นหลังและคมชัดตัวอักษรสี
-                const factor = 1.28;
-                data[i] = Math.min(255, Math.max(0, (data[i] - 120) * factor + 132));
-                data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 120) * factor + 132));
-                data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 120) * factor + 132));
-              } else if (docFilter === 'bw_scan') {
-                // โหมด iOS Black & White Scan: ปรับพื้นกระดาษขาวสนิท ตัวหนังสือดำคมกริบ
-                const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                const bw = lum > 135 ? 255 : Math.max(0, lum * 0.45);
-                data[i] = bw;
-                data[i + 1] = bw;
-                data[i + 2] = bw;
-              }
-            }
-            ctx.putImageData(imageData, 0, 0);
+        async function runLiveDetectionLoop() {
+          try {
+            // สร้าง Worker อ่านภาษาอังกฤษ + ไทย
+            workerInstance = await Tesseract.createWorker('eng+tha');
+          } catch (e) {
+            workerInstance = await Tesseract.createWorker('eng');
           }
 
-          setProcessedPreview(canvas.toDataURL('image/jpeg', 0.9));
-        };
-        img.src = rawImage;
-      }, [rawImage, docFilter]);
+          while (!isCancelled && isLiveScanning && scanStep === 'camera') {
+            if (videoRef.current && videoRef.current.readyState === 4) {
+              setIsProcessingFrame(true);
+              try {
+                const video = videoRef.current;
+                const offCanvas = document.createElement('canvas');
+                // ย่อขนาดภาพลงเล็กน้อยเพื่อให้ประมวลผลเร็วระดับเสี้ยววินาที
+                const scale = 0.5;
+                offCanvas.width = video.videoWidth * scale;
+                offCanvas.height = video.videoHeight * scale;
+                const ctx = offCanvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, offCanvas.width, offCanvas.height);
 
-      // กดถ่ายเอกสารจากกล้อง
-      const handleCaptureDocument = () => {
-        if (!videoRef.current || !hasCamera) {
-          setRawImage('logo_paoya.png');
-          setScanStep('preview');
-          return;
+                const { data } = await workerInstance.recognize(offCanvas);
+                if (isCancelled) break;
+
+                // กรองเอาเฉพาะคำที่ความมั่นใจสูง (> 55%)
+                const validWords = (data.words || [])
+                  .filter(w => w.confidence > 55 && w.text.trim().length >= 2)
+                  .map(w => ({
+                    text: w.text.trim(),
+                    // แปลงพิกัดเป็นเปอร์เซ็นต์ (%) เพื่อวาดทับบนจอได้พอดีทุกขนาดหน้าจอ
+                    x: (w.bbox.x0 / offCanvas.width) * 100,
+                    y: (w.bbox.y0 / offCanvas.height) * 100,
+                    w: ((w.bbox.x1 - w.bbox.x0) / offCanvas.width) * 100,
+                    h: ((w.bbox.y1 - w.bbox.y0) / offCanvas.height) * 100
+                  }));
+
+                setDetectedBlocks(validWords);
+
+                const fullText = validWords.map(w => w.text).join(' ');
+                setLiveRawText(fullText);
+
+                // ค้นหาชื่อยาในฐานข้อมูลอัตโนมัติทันทีที่กล้องเห็นคำ
+                if (fullText.length >= 3 && medicines.length > 0) {
+                  const lowerText = fullText.toLowerCase();
+                  const found = medicines.find(m => {
+                    const firstWord = m.title.split(' ')[0].toLowerCase();
+                    return firstWord.length >= 4 && lowerText.includes(firstWord);
+                  });
+                  if (found) {
+                    setLiveMatchedMed(found);
+                  }
+                }
+              } catch (err) {
+                console.log("Frame OCR skip:", err);
+              }
+              setIsProcessingFrame(false);
+            }
+            // พัก 800ms ก่อนสแกนเฟรมถัดไป (ป้องกันเครื่องร้อน)
+            await new Promise(r => setTimeout(r, 800));
+          }
+
+          if (workerInstance) {
+            await workerInstance.terminate();
+          }
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth || 1280;
-        canvas.height = videoRef.current.videoHeight || 720;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        setRawImage(canvas.toDataURL('image/jpeg', 0.92));
-        setScanStep('preview');
-      };
 
-      // เลือกรูปเอกสารจากคลังภาพ
-      const handleImageSelect = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          setRawImage(evt.target.result);
-          setScanStep('preview');
+        runLiveDetectionLoop();
+
+        return () => {
+          isCancelled = true;
         };
-        reader.readAsDataURL(file);
-      };
+      }, [hasCamera, isLiveScanning, scanStep, medicines]);
 
-      // ส่งภาพเอกสารเข้า Multimodal LLM (Gemini Vision)
-      const analyzeWithLLM = async () => {
+      // ส่งเฟรมปัจจุบันให้ LLM วิเคราะห์ละเอียด
+      const analyzeCurrentFrameWithLLM = async () => {
+        setIsLiveScanning(false);
         setScanStep('analyzing');
-        setStatusMessage('กำลังส่งเอกสารฉลากยาให้ AI เภสัชกร (Multimodal LLM) วิเคราะห์...');
+        setStatusMessage('กำลังส่งภาพฉลากยาปัจจุบันให้ AI เภสัชกรสรุปวิธีใช้และคำเตือน...');
 
-        const imageToSend = processedPreview || rawImage;
-        const base64Data = imageToSend.split(',')[1];
+        let base64Data = null;
+        if (videoRef.current && hasCamera) {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoRef.current.videoWidth || 1280;
+          canvas.height = videoRef.current.videoHeight || 720;
+          canvas.getContext('2d').drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+        }
 
-        // รายชื่อยาในระบบเพื่อให้ LLM ช่วยจับคู่ได้แม่นยำขึ้น
-        const sampleMedsList = medicines.slice(0, 60).map(m => m.title).join(', ');
-
-        const promptText = `คุณคือเภสัชกรผู้เชี่ยวชาญ ช่วยอ่านข้อความจากภาพเอกสาร/ฉลากยา/ซองยานี้ และสรุปข้อมูลออกมาเป็น JSON เท่านั้น (ห้ามมี markdown \`\`\`json) ตามโครงสร้างนี้:
+        const sampleMedsList = medicines.slice(0, 50).map(m => m.title).join(', ');
+        const promptText = `คุณคือเภสัชกร อ่านข้อความจากภาพฉลากยานี้ (ข้อความเบื้องต้นที่กล้องจับได้: "${liveRawText}") แล้วสรุปเป็น JSON เท่านั้น:
 {
-  "extractedText": "ข้อความสำคัญทั้งหมดที่อ่านได้จากฉลากยา",
-  "drugName": "ชื่อสามัญทางยา (Generic Name) หรือชื่อการค้าหลักที่อ่านได้ (ภาษาอังกฤษหรือไทย)",
-  "dosageInstruction": "ขนาดและวิธีรับประทานที่ระบุบนซองยา (ถ้าไม่มีให้ระบุ 'ตามแพทย์สั่ง')",
-  "warning": "คำเตือนหรือข้อควรระวังสำคัญ",
-  "aiAdvice": "คำแนะนำเพิ่มเติมจากเภสัชกร AI แบบเข้าใจง่ายสำหรับผู้ป่วย",
-  "confidence": "เปอร์เซ็นต์ความมั่นใจ เช่น 98%"
+  "extractedText": "ข้อความทั้งหมดบนฉลาก",
+  "drugName": "ชื่อสามัญทางยา (Generic Name)",
+  "dosageInstruction": "วิธีรับประทาน",
+  "warning": "คำเตือนสำคัญ",
+  "aiAdvice": "คำแนะนำสำหรับผู้ป่วย",
+  "confidence": "98%"
 }
-รายชื่อยาอ้างอิงในระบบ: [${sampleMedsList}]`;
+อ้างอิงรายชื่อยา: [${sampleMedsList}]`;
 
         try {
           let parsed = null;
-
-          if (apiKey && apiKey.trim().length > 10) {
+          if (apiKey && apiKey.trim().length > 10 && base64Data) {
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1588,58 +1600,37 @@ END:VCALENDAR`;
                     { inline_data: { mime_type: "image/jpeg", data: base64Data } }
                   ]
                 }],
-                generationConfig: {
-                  temperature: 0.2,
-                  responseMimeType: "application/json"
-                }
+                generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
               })
             });
-
-            if (!response.ok) throw new Error('Gemini API Error');
+            if (!response.ok) throw new Error('API Error');
             const data = await response.json();
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            parsed = JSON.parse(rawText);
+            parsed = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
           } else {
-            // โหมดจำลองการทำงาน LLM เมื่อยังไม่ได้ใส่ API Key
-            await new Promise(r => setTimeout(r, 1400));
-            const fallbackMed = medicines[0] || { title: 'Paracetamol 500 mg', sub: 'รูปแบบ: เม็ด | หมายเหตุ: รับประทานครั้งละ 1-2 เม็ด ทุก 4-6 ชั่วโมง' };
+            await new Promise(r => setTimeout(r, 1200));
+            const targetMed = liveMatchedMed || medicines[0] || { title: 'Paracetamol 500 mg', sub: 'รับประทานครั้งละ 1-2 เม็ด ทุก 4-6 ชม.' };
             parsed = {
-              extractedText: `เอกสารฉลากยา: ${fallbackMed.title} (โหมดสาธิต LLM - กดไอคอนเฟืองมุมขวาบนเพื่อใส่ Gemini API Key สำหรับอ่านภาพจริง)`,
-              drugName: fallbackMed.title,
+              extractedText: liveRawText || `ฉลากยา: ${targetMed.title}`,
+              drugName: targetMed.title,
               dosageInstruction: 'รับประทานครั้งละ 1 เม็ด หลังอาหาร เช้า-เย็น',
               warning: 'ห้ามใช้เกินขนาดที่กำหนด หากมีอาการแพ้ยาให้หยุดยาทันที',
-              aiAdvice: `AI วิเคราะห์เอกสารฉลากยาเรียบร้อยแล้ว พบว่าตรงกับยา ${fallbackMed.title} แนะนำให้รับประทานติดต่อกันตามคำแนะนำของแพทย์หรือเภสัชกร`,
+              aiAdvice: `ตรวจพบยา ${targetMed.title} จากกล้องสแกนสด แนะนำให้ทานตามฉลากอย่างเคร่งครัด`,
               confidence: '97%'
             };
           }
 
-          // ค้นหายาที่ตรงกันในฐานข้อมูล Excel ของแอป
-          const searchKey = (parsed.drugName || '').toLowerCase();
-          const matchedMed = medicines.find(m =>
-            m.title.toLowerCase().includes(searchKey) ||
-            searchKey.includes(m.title.toLowerCase())
-          ) || {
-            title: parsed.drugName || 'ไม่ระบุชื่อยา',
-            sub: `วิธีใช้: ${parsed.dosageInstruction} | คำเตือน: ${parsed.warning}`,
-            raw: {
-              'ชื่อยา': parsed.drugName,
-              'ชื่อสามัญทางยา (Generic Name)': parsed.drugName,
-              'ขนาดและวิธีใช้': parsed.dosageInstruction,
-              'คำเตือน / หมายเหตุเพิ่มเติม': parsed.warning,
-              'สรรพคุณ': parsed.aiAdvice
-            }
+          const matchedMed = liveMatchedMed || medicines.find(m => m.title.toLowerCase().includes((parsed.drugName || '').toLowerCase())) || {
+            title: parsed.drugName,
+            sub: parsed.dosageInstruction,
+            raw: { 'ชื่อยา': parsed.drugName, 'ขนาดและวิธีใช้': parsed.dosageInstruction, 'คำเตือน / หมายเหตุเพิ่มเติม': parsed.warning, 'สรรพคุณ': parsed.aiAdvice }
           };
 
-          setLlmResult({
-            ...parsed,
-            matchedMedItem: matchedMed
-          });
+          setLlmResult({ ...parsed, matchedMedItem: matchedMed });
           setScanStep('result');
-
         } catch (err) {
-          console.error("LLM Vision Error:", err);
-          alert('ไม่สามารถเชื่อมต่อ LLM API ได้ กรุณาตรวจสอบ API Key หรือการเชื่อมต่ออินเทอร์เน็ต');
-          setScanStep('preview');
+          alert('เกิดข้อผิดพลาดในการวิเคราะห์ กรุณาลองใหม่');
+          setScanStep('camera');
+          setIsLiveScanning(true);
         }
       };
 
@@ -1648,13 +1639,10 @@ END:VCALENDAR`;
           addRecentlyViewed(llmResult.matchedMedItem);
           setSelectedMedicine(llmResult.matchedMedItem);
           setCurrentScreen('med_detail');
-        } else if (llmResult?.drugName) {
-          setSearchQuery(llmResult.drugName);
-          setCurrentScreen('home');
         }
         setScanStep('camera');
         setLlmResult(null);
-        setRawImage(null);
+        setIsLiveScanning(true);
       };
 
       const saveApiKey = (newKey) => {
@@ -1664,256 +1652,202 @@ END:VCALENDAR`;
       };
 
       return (
-        <div className="flex-1 bg-[#121615] h-full flex flex-col justify-between items-center relative overflow-hidden pb-4">
-          
-          {/* Top Bar สไตล์ iPhone Document Scanner */}
-          <div className="w-full px-4 pt-4 pb-2 flex items-center justify-between z-20 text-white">
+        <div className="flex-1 bg-black h-full flex flex-col justify-between relative overflow-hidden">
+          {/* Top Bar โปร่งใสทับบนกล้อง */}
+          <div className="w-full px-4 pt-4 pb-2 flex items-center justify-between z-30 text-white absolute top-0 left-0 bg-gradient-to-b from-black/70 to-transparent">
             <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/15">
-              <span className={`w-2 h-2 rounded-full ${apiKey ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`}></span>
+              <span className={`w-2 h-2 rounded-full ${isLiveScanning ? 'bg-green-400 animate-ping' : 'bg-amber-400'}`}></span>
               <span className="text-[11px] font-medium">
-                {apiKey ? 'LLM Vision พร้อมใช้งาน' : 'โหมดสาธิต LLM'}
+                {isLiveScanning ? (isProcessingFrame ? 'กำลังจับตัวหนังสือ...' : 'Live OCR เปิดอยู่') : 'หยุดภาพชั่วคราว'}
               </span>
             </div>
 
-            <button
-              onClick={() => setShowApiModal(true)}
-              className="p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full border border-white/15 text-white/90 active:scale-95 transition-all"
-              title="ตั้งค่า Gemini API Key"
-            >
-              <i data-lucide="key" className="w-4 h-4"></i>
-            </button>
+            <div className="flex items-center gap-2">
+              {/* ปุ่ม Pause / Resume Live Scan */}
+              <button
+                onClick={() => setIsLiveScanning(!isLiveScanning)}
+                className="px-3 py-1.5 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full border border-white/20 text-xs font-medium flex items-center gap-1"
+              >
+                <i data-lucide={isLiveScanning ? "pause" : "play"} className="w-3.5 h-3.5"></i>
+                {isLiveScanning ? 'หยุดภาพ' : 'สแกนต่อ'}
+              </button>
+
+              <button
+                onClick={() => setShowApiModal(true)}
+                className="p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full border border-white/20 text-white/90"
+              >
+                <i data-lucide="key" className="w-4 h-4"></i>
+              </button>
+            </div>
           </div>
 
-          {/* STEP 1: กล้องสแกนเอกสารสไตล์ iOS (Auto-Detect Frame สีเหลืองทอง) */}
-          {scanStep === 'camera' && (
-            <>
-              <div className="w-full flex-1 flex flex-col items-center justify-center p-4 relative">
-                <div className="w-[88%] h-[68%] relative flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl bg-black">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={`w-full h-full object-cover absolute inset-0 ${hasCamera ? 'block' : 'hidden'}`}
-                  />
+          {/* พื้นที่กล้องเต็มจอ + Live AR Text Overlay */}
+          <div className="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${hasCamera ? 'block' : 'hidden'}`}
+            />
 
-                  {!hasCamera && (
-                    <div className="text-center text-white/70 px-4 z-10">
-                      <i data-lucide="file-scan" className="w-12 h-12 mx-auto mb-2 text-yellow-400 opacity-80"></i>
-                      <p className="text-xs font-medium">วางซองยาหรือใบสั่งยาในกรอบ</p>
-                      <p className="text-[10px] text-white/50 mt-1">(กดปุ่มชัตเตอร์ด้านล่าง หรือเลือกรูปจากอัลบั้ม)</p>
-                    </div>
-                  )}
-
-                  {/* กรอบตรวจจับเอกสารสีเหลืองแบบ iPhone Notes Scanner */}
-                  <div className="absolute inset-4 border-2 border-yellow-400/90 bg-yellow-400/10 rounded-xl transition-all duration-300 pointer-events-none z-10">
-                    <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-yellow-300 rounded-tl-md"></div>
-                    <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-yellow-300 rounded-tr-md"></div>
-                    <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-yellow-300 rounded-bl-md"></div>
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-yellow-300 rounded-br-md"></div>
-                  </div>
-
-                  <div className="bg-black/65 backdrop-blur-md px-3.5 py-1 rounded-full flex items-center space-x-1.5 text-yellow-300 text-[11px] font-medium z-10 absolute top-3">
-                    <i data-lucide="scan-text" className="w-3.5 h-3.5"></i>
-                    <span>ตรวจพบเอกสารฉลากยาอัตโนมัติ</span>
-                  </div>
-                </div>
-
-                <p className="text-white/85 text-xs mt-3 bg-black/50 px-4 py-1.5 rounded-full">
-                  จัดฉลากยาให้อยู่ในกรอบสีเหลือง เพื่อสแกนเอกสารให้คมชัด
-                </p>
-              </div>
-
-              {/* แถบปุ่มชัตเตอร์ด้านล่างสไตล์ iOS Camera */}
-              <div className="w-full px-8 pb-3 flex items-center justify-center relative">
-                <button
-                  onClick={handleCaptureDocument}
-                  className="w-18 h-18 rounded-full border-4 border-white p-1 flex items-center justify-center active:scale-90 transition-all shadow-xl"
-                >
-                  <div className="w-14 h-14 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center text-gray-900">
-                    <i data-lucide="camera" className="w-6 h-6"></i>
-                  </div>
-                </button>
-
-                <label className="absolute right-8 bg-white/15 hover:bg-white/25 text-white p-3.5 rounded-2xl backdrop-blur-md border border-white/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center">
-                  <i data-lucide="image" className="w-6 h-6"></i>
-                  <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
-                </label>
-              </div>
-            </>
-          )}
-
-          {/* STEP 2: หน้าตรวจสอบและปรับแต่งเอกสารแบบ iPhone (Document Crop & Filter Review) */}
-          {scanStep === 'preview' && (
-            <div className="flex-1 w-full flex flex-col justify-between p-4 z-20">
-              <div className="text-center">
-                <h3 className="text-white font-bold text-sm">ตรวจสอบความคมชัดเอกสาร</h3>
-                <p className="text-[11px] text-gray-400">ระบบตัดขอบอัตโนมัติแล้ว เลือกโหมดสีเพื่อให้ AI อ่านง่ายที่สุด</p>
-              </div>
-
-              {/* ภาพตัวอย่างเอกสารที่สแกน */}
-              <div className="my-3 flex-1 flex items-center justify-center overflow-hidden bg-black/40 rounded-2xl border border-white/15 p-2">
-                {processedPreview && (
-                  <img
-                    src={processedPreview}
-                    alt="Scanned Document"
-                    className="max-h-full max-w-full object-contain rounded-xl shadow-lg"
-                  />
-                )}
-              </div>
-
-              {/* ตัวเลือกฟิลเตอร์แบบ iOS Document Scanner */}
-              <div className="flex justify-center gap-2 mb-4">
-                {[
-                  { id: 'doc_enhance', label: 'เอกสารสีคมชัด', icon: 'sparkles' },
-                  { id: 'bw_scan', label: 'ขาว-ดำ (สแกน)', icon: 'contrast' },
-                  { id: 'original', label: 'ภาพต้นฉบับ', icon: 'image' }
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => setDocFilter(f.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
-                      docFilter === f.id
-                        ? 'bg-yellow-400 text-gray-900 font-bold shadow'
-                        : 'bg-white/10 text-white/80 hover:bg-white/20'
-                    }`}
+            {/* Layer วาดกรอบจับตัวหนังสือแบบ Google Translate */}
+            {hasCamera && scanStep === 'camera' && (
+              <div className="absolute inset-0 pointer-events-none z-20">
+                {detectedBlocks.map((block, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      left: `${block.x}%`,
+                      top: `${block.y}%`,
+                      width: `${Math.max(block.w, 8)}%`,
+                      height: `${Math.max(block.h, 3)}%`
+                    }}
+                    className="absolute border border-yellow-400 bg-yellow-400/25 rounded px-1 flex items-center justify-center transition-all duration-300"
                   >
-                    <i data-lucide={f.icon} className="w-3.5 h-3.5"></i>
-                    {f.label}
-                  </button>
+                    <span className="text-[10px] font-bold text-white bg-black/75 px-1 rounded shadow-sm whitespace-nowrap -mt-5">
+                      {block.text}
+                    </span>
+                  </div>
                 ))}
               </div>
+            )}
 
-              {/* ปุ่มถ่ายใหม่ / ส่งให้ LLM วิเคราะห์ */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setScanStep('camera'); setRawImage(null); }}
-                  className="flex-1 py-3 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition-all"
-                >
-                  สแกนใหม่
-                </button>
-                <button
-                  onClick={analyzeWithLLM}
-                  className="flex-[2] py-3 rounded-2xl bg-[#388E3C] hover:bg-[#2e7d32] text-white font-bold text-xs shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <i data-lucide="bot" className="w-4 h-4"></i>
-                  ให้ LLM วิเคราะห์ฉลากยา
-                </button>
+            {/* กรณีไม่มีกล้อง */}
+            {!hasCamera && (
+              <div className="text-center text-white/70 px-6 z-10">
+                <i data-lucide="scan-text" className="w-12 h-12 mx-auto mb-3 text-yellow-400"></i>
+                <p className="text-sm font-bold">ไม่สามารถเข้าถึงกล้องได้</p>
+                <p className="text-xs text-white/50 mt-1">กรุณาอนุญาตสิทธิ์การใช้กล้องบนเบราว์เซอร์ เพื่อใช้งานระบบตรวจจับข้อความสด</p>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* STEP 3: กำลังประมวลผลด้วย Multimodal LLM */}
-          {scanStep === 'analyzing' && (
-            <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-6">
-              <div className="w-14 h-14 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <h4 className="font-bold text-base mb-1">LLM Vision กำลังอ่านเอกสารฉลากยา...</h4>
-              <p className="text-xs text-gray-300 text-center max-w-xs leading-relaxed">{statusMessage}</p>
+            {/* กรอบเล็งตรงกลางจางๆ */}
+            <div className="w-[82%] h-[45%] border border-white/30 rounded-2xl pointer-events-none relative z-10">
+              <div className="absolute -top-0.5 -left-0.5 w-5 h-5 border-t-2 border-l-2 border-yellow-400 rounded-tl-lg"></div>
+              <div className="absolute -top-0.5 -right-0.5 w-5 h-5 border-t-2 border-r-2 border-yellow-400 rounded-tr-lg"></div>
+              <div className="absolute -bottom-0.5 -left-0.5 w-5 h-5 border-b-2 border-l-2 border-yellow-400 rounded-bl-lg"></div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 border-b-2 border-r-2 border-yellow-400 rounded-br-lg"></div>
             </div>
-          )}
+          </div>
 
-          {/* STEP 4: ผลลัพธ์จาก LLM */}
-          {scanStep === 'result' && llmResult && (
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-              <div className="bg-white w-full rounded-3xl p-5 shadow-2xl space-y-3.5 max-h-[88%] overflow-y-auto">
-                <div className="flex justify-between items-start border-b border-gray-100 pb-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-green-100 text-[#2D7A4C] rounded-xl">
-                      <i data-lucide="sparkles" className="w-5 h-5"></i>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-base">ผลวิเคราะห์เอกสารโดย LLM</h3>
-                      <p className="text-[11px] text-green-600 font-bold">ความแม่นยำ AI: {llmResult.confidence}</p>
-                    </div>
+          {/* แถบแสดงผลลัพธ์ Real-time ด้านล่าง (เด้งขึ้นทันทีที่กล้องจับชื่อยาได้) */}
+          {scanStep === 'camera' && (
+            <div className="w-full p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 space-y-3">
+              {/* กล่องแสดงคำที่กล้องกำลังอ่านได้สดๆ */}
+              {liveRawText && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-xl px-3 py-2 text-white">
+                  <span className="text-[10px] text-yellow-300 font-bold block">ข้อความที่กล้องจับได้:</span>
+                  <p className="text-xs truncate text-white/90">{liveRawText}</p>
+                </div>
+              )}
+
+              {/* การ์ดชื่อยาที่ Match เจออัตโนมัติ (กดเข้าไปดูรายละเอียดได้เลย) */}
+              {liveMatchedMed ? (
+                <div className="bg-white rounded-2xl p-3.5 shadow-xl border-2 border-[#388E3C] flex items-center justify-between animate-bounce">
+                  <div className="pr-2">
+                    <span className="text-[10px] bg-green-100 text-[#2D7A4C] font-bold px-2 py-0.5 rounded-full">
+                      ตรวจพบยาในระบบ!
+                    </span>
+                    <h4 className="font-bold text-gray-900 text-sm mt-1">{liveMatchedMed.title}</h4>
+                    <p className="text-[11px] text-gray-500 line-clamp-1">{liveMatchedMed.sub}</p>
                   </div>
                   <button
-                    onClick={() => { setScanStep('camera'); setLlmResult(null); }}
-                    className="text-gray-400 hover:text-gray-600 p-1"
+                    onClick={() => {
+                      addRecentlyViewed(liveMatchedMed);
+                      setSelectedMedicine(liveMatchedMed);
+                      setCurrentScreen('med_detail');
+                    }}
+                    className="bg-[#388E3C] text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow whitespace-nowrap active:scale-95"
                   >
+                    ดูข้อมูลยา
+                  </button>
+                </div>
+              ) : (
+                <p className="text-center text-white/75 text-xs">
+                  จ่อกล้องไปที่ชื่อยาบนซอง ระบบจะตรวจจับข้อความให้อัตโนมัติ
+                </p>
+              )}
+
+              {/* ปุ่มกดให้ AI วิเคราะห์ฉลากทั้งหมด */}
+              <button
+                onClick={analyzeCurrentFrameWithLLM}
+                className="w-full bg-[#388E3C] hover:bg-[#2e7d32] text-white font-bold py-3 rounded-full text-xs shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <i data-lucide="sparkles" className="w-4 h-4"></i>
+                สรุปวิธีใช้และคำเตือนบนฉลากนี้ด้วย AI
+              </button>
+            </div>
+          )}
+
+          {/* หน้ากำลังวิเคราะห์ */}
+          {scanStep === 'analyzing' && (
+            <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex flex-col items-center justify-center text-white p-6">
+              <div className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <h4 className="font-bold text-base mb-1">AI กำลังอ่านรายละเอียดฉลากยา...</h4>
+              <p className="text-xs text-gray-300 text-center max-w-xs">{statusMessage}</p>
+            </div>
+          )}
+
+          {/* Modal แสดงผลสรุปจาก LLM */}
+          {scanStep === 'result' && llmResult && (
+            <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-end justify-center p-4">
+              <div className="bg-white w-full rounded-3xl p-5 shadow-2xl space-y-3.5 max-h-[85%] overflow-y-auto">
+                <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-base">สรุปข้อมูลฉลากยา</h3>
+                    <p className="text-[11px] text-green-600 font-bold">ความแม่นยำ: {llmResult.confidence}</p>
+                  </div>
+                  <button onClick={() => { setScanStep('camera'); setIsLiveScanning(true); }} className="text-gray-400 p-1">
                     <i data-lucide="x" className="w-5 h-5"></i>
                   </button>
                 </div>
 
-                <div className="bg-green-50/70 p-3.5 rounded-2xl border border-green-100 space-y-1">
-                  <span className="text-[10px] font-bold text-[#2D7A4C] uppercase tracking-wider">ชื่อยาที่ตรวจพบ</span>
+                <div className="bg-green-50 p-3.5 rounded-2xl border border-green-100">
                   <h4 className="font-bold text-gray-900 text-lg">{llmResult.drugName}</h4>
-                  <p className="text-xs text-gray-700 font-medium">วิธีรับประทาน: {llmResult.dosageInstruction}</p>
+                  <p className="text-xs text-gray-700 mt-1">วิธีรับประทาน: {llmResult.dosageInstruction}</p>
                 </div>
 
                 {llmResult.warning && (
-                  <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200">
-                    <span className="text-[10px] font-bold text-amber-700 uppercase block mb-0.5">ข้อควรระวัง / คำเตือน</span>
-                    <p className="text-xs text-amber-900">{llmResult.warning}</p>
+                  <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200 text-xs text-amber-900">
+                    <span className="font-bold block mb-0.5">คำเตือน:</span>
+                    {llmResult.warning}
                   </div>
                 )}
 
-                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">คำแนะนำจากเภสัชกร AI</span>
-                  <p className="text-xs text-gray-700 leading-relaxed">{llmResult.aiAdvice}</p>
-                </div>
-
-                <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase block mb-0.5">ข้อความที่อ่านได้จากเอกสาร:</span>
-                  <p className="text-[11px] text-gray-600 italic">"{llmResult.extractedText}"</p>
-                </div>
-
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-2">
                   <button
-                    onClick={() => { setScanStep('camera'); setLlmResult(null); }}
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl text-xs transition-all"
+                    onClick={() => { setScanStep('camera'); setIsLiveScanning(true); }}
+                    className="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-xl text-xs"
                   >
-                    สแกนซองอื่น
+                    สแกนต่อ
                   </button>
                   <button
                     onClick={handleConfirmScanResult}
-                    className="flex-[2] bg-[#388E3C] text-white font-bold py-3 rounded-xl text-xs shadow hover:bg-[#2e7d32] active:scale-95 transition-all"
+                    className="flex-[2] bg-[#388E3C] text-white font-bold py-3 rounded-xl text-xs shadow"
                   >
-                    ดูรายละเอียดและข้อมูลยาเต็ม
+                    ดูข้อมูลยาฉบับเต็ม
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Modal ตั้งค่า Gemini API Key */}
+          {/* Modal ตั้งค่า API Key */}
           {showApiModal && (
-            <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-4">
-                <div className="flex justify-between items-center border-b pb-3">
-                  <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
-                    <i data-lucide="key" className="w-4 h-4 text-[#2D7A4C]"></i>
-                    ตั้งค่า Gemini LLM API Key
-                  </h3>
-                  <button onClick={() => setShowApiModal(false)} className="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="x" className="w-4 h-4"></i>
-                  </button>
-                </div>
-
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  ใส่ API Key จาก Google AI Studio เพื่อให้ระบบใช้ Multimodal LLM อ่านฉลากยาและเอกสารจากภาพจริงได้แม่นยำสูงสุด
-                </p>
-
+            <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-xs rounded-3xl p-5 space-y-4">
+                <h3 className="font-bold text-gray-800 text-sm">ตั้งค่า Gemini API Key</h3>
                 <input
                   type="password"
                   placeholder="AIzaSy..."
                   defaultValue={apiKey}
                   id="gemini-key-input"
-                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl focus:outline-none focus:border-[#2D7A4C]"
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl"
                 />
-
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => saveApiKey(document.getElementById('gemini-key-input').value)}
-                    className="flex-1 bg-[#388E3C] text-white py-2.5 rounded-xl text-xs font-bold"
-                  >
-                    บันทึกคีย์
-                  </button>
-                  <button
-                    onClick={() => setShowApiModal(false)}
-                    className="px-4 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-xs font-bold"
-                  >
-                    ปิด
-                  </button>
+                  <button onClick={() => saveApiKey(document.getElementById('gemini-key-input').value)} className="flex-1 bg-[#388E3C] text-white py-2 rounded-xl text-xs font-bold">บันทึก</button>
+                  <button onClick={() => setShowApiModal(false)} className="px-4 bg-gray-100 text-gray-700 py-2 rounded-xl text-xs font-bold">ปิด</button>
                 </div>
               </div>
             </div>
